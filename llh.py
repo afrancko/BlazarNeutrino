@@ -1,7 +1,7 @@
 # coding: utf-8
 
-from astropy.coordinates import SkyCoord
-from astropy import units as u
+#from astropy.coordinates import SkyCoord
+#from astropy import units as u
 import matplotlib.mlab as mlab
 from scipy.stats import norm
 import numpy as np
@@ -10,9 +10,9 @@ from scipy.interpolate import interp1d
 from matplotlib.colors import LogNorm
 import pyfits as fits
 import datetime
+import sys
 
-
-nugen_path = './processed/combined.npy'
+nugen_path = '/data/user/tglauch/EHE/processed/combined.npy'
 # input in rad
 def GreatCircleDistance(ra_1, dec_1, ra_2, dec_2, use_astro=False):
     '''Compute the great circle distance between two events'''
@@ -54,11 +54,13 @@ def read3FGL():
     tbdata = hdulist[1].data
 
     # select only extra gal sources
-    eGal3FGL = ['css  ', 'BLL  ', 'bll  ', 'fsrq ', 'FSRQ ', 'agn  ', 'RDG  ',
-                'rdg  ', 'sey  ', 'BCU  ', 'bcu  ', 'GAL  ', 'gal  ', 'NLSY1',
-                'nlsy1', 'ssrq ']
+    eGal3FGL = ['css', 'BLL', 'bll', 'fsrq', 'FSRQ', 'agn', 'RDG',
+                'rdg', 'sey', 'BCU', 'bcu', 'GAL', 'gal', 'NLSY1',
+                'nlsy1', 'ssrq']
 
-    mask = [c in eGal3FGL for c in tbdata['Class1']]
+    # get rid of extra spaces at the end
+    mask = [c.strip() in eGal3FGL for c in tbdata['Class1']]
+    mask = np.asarray(mask)
     tbdata = tbdata[mask]
 
     timeBins = []
@@ -68,12 +70,21 @@ def read3FGL():
 
     return tbdata, np.asarray(timeBins)
 
+def readLCCat():
+    file_name = "data/myCat.fits"
+    hdulist = fits.open(file_name)
+    tbdata = hdulist[1].data
+
+    timeBins = []
+
+    for i in range(len(hdulist[2].data['Hist_start'])):
+        timeBins.append(hdulist[2].data['Hist_start'][i])
+
+    return tbdata, np.asarray(timeBins)
 
 def getTBin(testT, timeBins):
     ind = np.searchsorted(timeBins, testT, side='right')
     return ind - 1
-    # maskT = timeBins<testT
-    # return (timeBins[maskT].size-1)
 
 
 def getDataEHE():
@@ -134,19 +145,30 @@ def get3FGL(ra, dec, sigma, neuTime, tbdata, timeBins):
     circ = sigma * 3.
     if circ > np.deg2rad(5):
         circ = np.deg2rad(5)
-    mask = [GreatCircleDistance(np.deg2rad(tbdata['RAJ2000']),
+    
+    dist = GreatCircleDistance(np.deg2rad(tbdata['RAJ2000']),
                                 np.deg2rad(tbdata['DEJ2000']),
-                                ra, dec) < circ]
+                                ra, dec)
+    mask = dist<circ
     foundSources = tbdata[mask]
+    print "found %i sources close by"%len(foundSources)
     if len(foundSources) == 0:
         return None
     # this is a hack to get the flux of the measured EHE event
     # which is outside of the catalog time
     if neuTime < 0:
-        fluxNeuTime = 0.39e-6
+        fluxNeuTime = [0.39e-6]
+        mask = dist<np.deg2rad(0.5)
+        foundSources = tbdata[mask]
     else:
         fluxHist = foundSources['Flux_History']
+        #ts = foundSources['TS']
         fluxNeuTime = [f[getTBin(neuTime, timeBins)] for f in fluxHist]
+        #tsNeuTime = [f[getTBin(neuTime, timeBins)] for f in ts]
+        #tsMask = tsNeuTime < 4
+        #tsMask = np.asarray(tsMask)
+        #fluxNeuTime = fluxNeuTime[tsMask]
+        #foundSources = foundSources[tsMask]
     retval = np.deg2rad(foundSources['RAJ2000']), \
         np.deg2rad(foundSources['DEJ2000']), fluxNeuTime
     return retval
@@ -162,7 +184,8 @@ def likelihood(en, ra, dec, sigma, neuTime,
     raS, decS, fluxS = foundSources
 
     fluxS = np.asarray(fluxS)
-    fluxS[fluxS < 1e-12] = 1e-12
+    mask = fluxS < 1e-12
+    fluxS[mask] = 1e-12
 
     fluxNorm = 1e-6
     sourceTerm = fluxS / fluxNorm * np.exp(-GreatCircleDistance(ra, dec, raS, decS)**2 / (2. * sigma**2))
@@ -180,7 +203,7 @@ def likelihood(en, ra, dec, sigma, neuTime,
         BGRateTerm = 1e-12
 
     llh = -2 * np.log(sigma) + np.log(np.sum(sourceTerm)) - np.log(BGRateTerm) + np.log(energyTerm)
-    print llh
+    print 'likelihhod ', llh
     return 2 * llh
 
 
@@ -239,18 +262,21 @@ def plotLLH(llhfile, outfile, cosZenBins, EPDFSig, EPDFBG, pBG, tbdata):
 
 
 if __name__ == '__main__':
+
+    jobN = int(sys.argv[1])
     # get Data
     azi, zen, recoE, trueE, OneWeight, AtmWeight, cr, cr_zen, cr_azi, npe = getDataEHE()
     # read 3FGL catalog
-    tbdata, timeBins = read3FGL()
+    #tbdata, timeBins = read3FGL()
+    tbdata, timeBins = readLCCat()
 
     gammaSig = 2.1
     cosZenBins, EPDFSig, EPDFBG = EnergyPDF(zen, recoE, AtmWeight,
                                             OneWeight, gammaSig)
     pBG = BGRatePDF(zen, AtmWeight)
 
-    NSim = 100000
-    filename = 'output/llh_%i_%.1f.npy' % (NSim, gammaSig)
+    NSim = 1000
+    filename = 'output/llh_%i_%.1f_%i.npy' % (NSim, gammaSig, jobN)
     simulate(zen, azi, recoE, cr,
              AtmWeight, timeBins, filename,
              cosZenBins, EPDFSig, EPDFBG,
