@@ -2,18 +2,53 @@
 
 #from astropy.coordinates import SkyCoord
 #from astropy import units as u
+# from plot_conf import *
 import matplotlib.mlab as mlab
 from scipy.stats import norm
 import numpy as np
-from matplotlib import pyplot as plt
+import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 from matplotlib.colors import LogNorm
 import pyfits as fits
 import datetime
 import sys
+from numpy.lib.recfunctions import rec_append_fields, append_fields
+
+
+# --------------------------------------- Settings ---------------------------- #
 
 nugen_path = '/data/user/tglauch/EHE/processed/combined.npy'
-# input in rad
+
+settings = {'E_reco': 'muex',
+            'zen_reco': 'mpe_zen',
+            'az_reco': 'mpe_az',
+            'sigma': 'cr',
+            'gamma': 2.1,
+            'ftypes': ['astro', 'atmo', 'prompt'], # atmo = conv..sry for that 
+            'Nsim': 100,
+            'Phi0': 0.91}
+
+dtype = [("en", np.float64),
+         ("ra", np.float64),
+         ("dec", np.float64),
+         ("sigma", np.float64),
+         ("neuTime", np.float64)]
+
+EHE_event=np.array((120000, np.deg2rad(77.43), np.deg2rad(5.72), np.deg2rad(0.25), -9), dtype=dtype)
+
+# ------------------------------------------------------------------------------ #
+
+@np.vectorize
+def powerlaw(trueE, ow):
+    return ow * settings['Phi0'] * 1e-18 * (trueE * 1e-5) ** (- settings['gamma'])
+
+dtype = [
+    ("en", np.float64),
+    ("ra", np.float64),
+    ("dec", np.float64),
+    ("sigma", np.float64),
+    ("neuTime", np.float64)]
+
 def GreatCircleDistance(ra_1, dec_1, ra_2, dec_2, use_astro=False):
     '''Compute the great circle distance between two events'''
     '''SkyCoord is super slow ..., don't use it'''
@@ -28,24 +63,6 @@ def GreatCircleDistance(ra_1, dec_1, ra_2, dec_2, use_astro=False):
         x = (np.sin(delta_dec / 2.))**2. + np.cos(dec_1) *\
             np.cos(dec_2) * (np.sin(delta_ra / 2.))**2.
         return 2. * np.arcsin(np.sqrt(x))
-
-
-def pull_EHE(zen, lognpe, cr_dzen, cr_dazi):
-    '''from realtime_ehe'''
-    # From pull fit
-    slope = -0.59247735857
-    inter = 2.05973576429
-
-    # define minimum value allowed (0.25 \deg) in radians
-    # min_corrected_pull = 0.0043633
-    # Calculate sigma
-    sin2 = np.sin(zen) * np.sin(zen)
-    sigma = np.sqrt(cr_dzen * cr_dzen + cr_dazi * cr_dazi * sin2 / 2.)
-
-    # Return corrected value
-    pull_corrtd = sigma / np.power(10, inter + slope * lognpe)
-    pull_corrtd = np.asarray(pull_corrtd)
-    return pull_corrtd
 
 
 def read3FGL():
@@ -70,6 +87,7 @@ def read3FGL():
 
     return tbdata, np.asarray(timeBins)
 
+
 def readLCCat():
     file_name = "data/myCat.fits"
     hdulist = fits.open(file_name)
@@ -82,25 +100,17 @@ def readLCCat():
 
     return tbdata, np.asarray(timeBins)
 
+
 def getTBin(testT, timeBins):
     ind = np.searchsorted(timeBins, testT, side='right')
     return ind - 1
 
 
-def getDataEHE():
-    # load data
-    f = np.load(nugen_path)
-    cr_theta = f['cramer_zen']
-    cr_phi = f['cramer_az']
-    cr = pull_EHE(f['mpe_zen'], np.log10(f['NPE']), cr_theta, cr_phi)
-    mask = np.isnan(cr)
-    cr = cr[~mask]
-    f = f[~mask]
-    return f['mpe_az'], f['mpe_zen'], f['muex'], f['energy'], f['ow'], f['atmo'], cr, cr_theta, cr_phi, f['NPE']
-
-
-def BGRatePDF(zen, AtmWeight, plot=False):
+def BGRatePDF(f, plot=False):
     # get BG rate as function of zenith PDF
+    #### Include Prompt !!!
+    zen = f[settings['zen_reco']]
+    AtmWeight = f['atmo']
     bins = np.linspace(-1, 1, 20)
     nBG, binsBG, patches = plt.hist(np.cos(zen), bins=bins,
                                     weights=AtmWeight,
@@ -111,8 +121,11 @@ def BGRatePDF(zen, AtmWeight, plot=False):
     return pBG
 
 
-def EnergyPDF(zen, recoE, AtmWeight, OneWeight, gammaSig=2.1):
+def EnergyPDF(f, gammaSig=2.1):
     # get energy PDF
+    zen = f[settings['zen_reco']]
+    recoE = f[settings['E_reco']]
+    AtmWeight = f['atmo']
     cosZenBins = [-1, -0.5, -0.25, -0.1, 1]
     cosZenBins = np.asarray(cosZenBins)
     EPDFSig = []
@@ -123,7 +136,7 @@ def EnergyPDF(zen, recoE, AtmWeight, OneWeight, gammaSig=2.1):
 
         bins = np.linspace(3, 7, 15)
         nSig, binsSig, patches = plt.hist(np.log10(recoE[zMask]),
-                                          weights=OneWeight[zMask] / (trueE[zMask]**gammaSig),
+                                          weights=f['astro'][zMask],
                                           normed=True, bins=bins, alpha=0.5,
                                           label='E$^{-2.1}$')
         nBG, binsBG, patches = plt.hist(np.log10(recoE[zMask]),
@@ -145,38 +158,44 @@ def get3FGL(ra, dec, sigma, neuTime, tbdata, timeBins):
     circ = sigma * 3.
     if circ > np.deg2rad(5):
         circ = np.deg2rad(5)
-    
+
     dist = GreatCircleDistance(np.deg2rad(tbdata['RAJ2000']),
-                                np.deg2rad(tbdata['DEJ2000']),
-                                ra, dec)
-    mask = dist<circ
+                               np.deg2rad(tbdata['DEJ2000']),
+                               ra, dec)
+    mask = dist < circ
     foundSources = tbdata[mask]
-    print "found %i sources close by"%len(foundSources)
+    print "found %i sources close by" % len(foundSources)
     if len(foundSources) == 0:
         return None
     # this is a hack to get the flux of the measured EHE event
     # which is outside of the catalog time
     if neuTime < 0:
         fluxNeuTime = [0.39e-6]
-        mask = dist<np.deg2rad(0.5)
+        mask = dist < np.deg2rad(0.5)
         foundSources = tbdata[mask]
     else:
         fluxHist = foundSources['Flux_History']
-        #ts = foundSources['TS']
+        # ts = foundSources['TS']
         fluxNeuTime = [f[getTBin(neuTime, timeBins)] for f in fluxHist]
-        #tsNeuTime = [f[getTBin(neuTime, timeBins)] for f in ts]
-        #tsMask = tsNeuTime < 4
-        #tsMask = np.asarray(tsMask)
-        #fluxNeuTime = fluxNeuTime[tsMask]
-        #foundSources = foundSources[tsMask]
+        # tsNeuTime = [f[getTBin(neuTime, timeBins)] for f in ts]
+        # tsMask = tsNeuTime < 4
+        # tsMask = np.asarray(tsMask)
+        # fluxNeuTime = fluxNeuTime[tsMask]
+        # foundSources = foundSources[tsMask]
     retval = np.deg2rad(foundSources['RAJ2000']), \
         np.deg2rad(foundSources['DEJ2000']), fluxNeuTime
     return retval
 
 
-def likelihood(en, ra, dec, sigma, neuTime,
-               cosZenBins, EPDFSig, EPDFBG,
+def likelihood(sim, cosZenBins, EPDFSig, EPDFBG,
                pBG, tbdata, timeBins):
+
+    en = sim['en']
+    ra = sim['ra']
+    dec = sim['dec']
+    sigma = sim['sigma']
+    neuTime = sim['neuTime']
+
     foundSources = get3FGL(ra, dec, sigma, neuTime, tbdata, timeBins)
     if foundSources is None:
         return -99
@@ -207,34 +226,52 @@ def likelihood(en, ra, dec, sigma, neuTime,
     return 2 * llh
 
 
-def simulate(zen, azi, recoE, cr, AtmWeight, timeBins,
-             filename, cosZenBins, EPDFSig, EPDFBG, pBG,
-             tbdata, NSim=1000):
+def simulate(f, timeBins, filename, cosZenBins,
+             EPDFSig, EPDFBG, pBG, tbdata, NSim=1000):
+# zen, azi, recoE, cr, AtmWeight,
 
-    # draw random index weighted with E^-2
-    #draw = np.random.choice(range(len(trueE)), NSim, p=OneWeight/(trueE**2)/np.sum(OneWeight/(trueE**2)))
-    # draw random index weighted with atmo
-    draw = np.random.choice(range(len(trueE)),
-                            NSim,
-                            p=AtmWeight / np.sum(AtmWeight))
+    enSim = []
+    crSim = []
+    zenSim = []
+    raSim = []
+    tot_rate = np.sum([np.sum(f[flux]) for
+                       flux in settings['ftypes']])
+    for flux in settings['ftypes']:
+        print('Fraction of {} : {:.2f}'.format(flux, np.sum(f[flux]) / tot_rate))
+        print(np.sum(f[flux])*np.pi*1e7)
+        N_events = int(NSim * np.sum(f[flux]) / tot_rate)
+        draw = np.random.choice(range(len(f)),
+                                N_events,
+                                p=f[flux] / np.sum(f[flux]))
+        print(draw)
+        print(N_events)
+        enSim.extend(f[draw][settings['E_reco']])
+        crSim.extend(f[draw][settings['sigma']])
+        zenSim.extend(f[draw][settings['zen_reco']])
+        raSim.extend(f[draw][settings['az_reco']])
 
-    enSim = recoE[draw]
-    crSim = cr[draw]
-    decSim = zen[draw] - 0.5 * np.pi
-    raSim = azi[draw]
+    sim = dict()
+    sim['en'] = np.array(enSim)
+    sim['ra'] = np.array(raSim)
+    sim['dec'] = np.array(zenSim) - 0.5 * np.pi
+    sim['sigma'] = np.array(crSim)
+
     # atmoSim = AtmWeight[draw]
     tmin = timeBins[0]
     tmax = timeBins[-1]
     # draw uniform neutrino times within catalog time span
-    neuTimeSim = np.random.uniform(tmin, tmax, size=NSim)
+    neuTimeSim = np.random.uniform(tmin, tmax, size=len(sim['en']))
+    sim['neuTime'] = neuTimeSim
+
+    sim = np.array(
+        zip(*[sim[ty[0]] for ty in dtype]), dtype=dtype)
 
     llh = []
-    for i in range(NSim):
+    for i in range(len(sim)):
         if i % 1 == 0:
-            print i, raSim[i], decSim[i], crSim[i], neuTimeSim[i]
-        llh.append(likelihood(enSim[i], raSim[i],
-                              decSim[i], crSim[i],
-                              neuTimeSim[i], cosZenBins,
+            print i, sim[i]['en'], sim[i]['ra'], sim[i]['dec'], sim[i]['sigma'], sim[i]['neuTime']
+
+        llh.append(likelihood(sim[i], cosZenBins,
                               EPDFSig, EPDFBG,
                               pBG, tbdata, timeBins))
 
@@ -247,40 +284,40 @@ def plotLLH(llhfile, outfile, cosZenBins, EPDFSig, EPDFBG, pBG, tbdata):
     plt.figure()
     bins = np.linspace(-20, 25, 50)
     a, b, c = plt.hist(llh, bins=bins, cumulative=-1, normed=1, log=True)
-    llhNu = likelihood(120000,
-                       np.deg2rad(77.43),
-                       np.deg2rad(5.72),
-                       np.deg2rad(0.25), -9,
-                       cosZenBins, EPDFSig, EPDFBG,
+    llhNu = likelihood(EHE_event, cosZenBins, EPDFSig, EPDFBG,
                        pBG, tbdata, timeBins)
     print llhNu
     plt.plot([llhNu, llhNu], [0, max(a)])
     plt.xlabel('log(likelihood)')
     plt.grid()
     plt.savefig(outfile)
-    plt.show()
+    # plt.show()
 
 
 if __name__ == '__main__':
 
     jobN = int(sys.argv[1])
     # get Data
-    azi, zen, recoE, trueE, OneWeight, AtmWeight, cr, cr_zen, cr_azi, npe = getDataEHE()
+    f = np.load(nugen_path)
+    astro = powerlaw(f['energy'], f['ow'])
+    f = rec_append_fields(f, 'astro',
+                          astro,
+                          dtypes=np.float64)
+    mask = np.isnan(f['cr'])
+    f = f[~mask]
     # read 3FGL catalog
-    #tbdata, timeBins = read3FGL()
-    tbdata, timeBins = readLCCat()
+    tbdata, timeBins = read3FGL()
+    # tbdata, timeBins = readLCCat()
+    print('Read Cataloge...Finished')
 
-    gammaSig = 2.1
-    cosZenBins, EPDFSig, EPDFBG = EnergyPDF(zen, recoE, AtmWeight,
-                                            OneWeight, gammaSig)
-    pBG = BGRatePDF(zen, AtmWeight)
+    cosZenBins, EPDFSig, EPDFBG = EnergyPDF(f, settings['gamma'])
+    pBG = BGRatePDF(f)
+    print('Generating PDFs..Finished')
 
-    NSim = 1000
-    filename = 'output/llh_%i_%.1f_%i.npy' % (NSim, gammaSig, jobN)
-    simulate(zen, azi, recoE, cr,
-             AtmWeight, timeBins, filename,
+    filename = 'output/llh_%i_%.1f_%i.npy' % (settings['Nsim'], settings['gamma'], jobN)
+    simulate(f, timeBins, filename,
              cosZenBins, EPDFSig, EPDFBG,
-             pBG, tbdata, NSim)
+             pBG, tbdata, settings['Nsim'])
 
     plotLLH(filename,
             filename.replace('output', 'plots').replace('npy', 'png'),
