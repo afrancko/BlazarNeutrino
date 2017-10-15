@@ -31,7 +31,7 @@ settings = {'E_reco': 'NPE',
             'sigma': 'cr',
             'gamma': 2.1,
             'ftypes': ['astro', 'atmo', 'prompt'],  # atmo = conv..sry for that
-            'Nsim': 10000,
+            'Nsim': 1000,
             'Phi0': 0.91}
 
 dtype = [("en", np.float64),
@@ -51,7 +51,8 @@ EHE_event = np.array((5784.9552,
                       -9),
                      dtype=dtype)
 
-spline = np.load('spline.npy')[()]
+E_spline = np.load('spline.npy')[()]
+coszen_spline = np.load('coszen_spl.npy')[()]
 
 # --------------------------------------------------------------------------- #
 
@@ -127,7 +128,6 @@ def getTBin(testT, timeBins):
 
 def BGRatePDF(f, plot=False):
     # get BG rate as function of zenith PDF
-    #### Include Prompt !!!
     zen = f[settings['zen_reco']]
     AtmWeight = f['atmo']
     bins = np.linspace(-1, 1, 20)
@@ -243,17 +243,16 @@ def likelihood(sim, tbdata, timeBins):
     # if BGRateTerm < 1e-12:
     #     BGRateTerm = 1e-12
 
-    signalness = spline(np.cos(dec + 0.5 * np.pi), np.log10(en))[0]
-    print('E: {} ra: {} dec: {} sigma: {} time : {} Signalness: {}'.format(en,
-                                                                           ra,
-                                                                           dec,
-                                                                           sigma,
-                                                                           neuTime,
-                                                                           signalness))
+    coszen = np.cos(dec + 0.5 * np.pi)
+    E_ratio = np.log(10 ** E_spline(coszen, np.log10(en))[0])
+    coszen_prob = np.log(10**(coszen_spline(coszen)/ (2 * np.pi)))
+    print('E: {} ra: {} coszen: {} \n \
+           sigma: {} time : {}'.format(en, ra, coszen,
+                                       sigma, neuTime,))
+
     # llh = -2 * np.log(sigma) + np.log(np.sum(sourceTerm)) - np.log(BGRateTerm) + np.log(energyTerm)
-    print('Signalness: {}'.format(spline(np.cos(dec + 0.5 * np.pi), np.log10(en))[0]))
-    llh = -2 * np.log(sigma) + np.log(np.sum(sourceTerm)) - np.log(signalness) - np.log(2 * np.pi)
-    print('Likelihood: {} '.format(llh))
+    llh = -2 * np.log(sigma) + np.log(np.sum(sourceTerm)) + E_ratio - coszen_prob
+    print('Likelihood: {} \n'.format(llh))
     return 2 * llh
 
 
@@ -267,7 +266,7 @@ def simulate(f, timeBins, filename, tbdata, NSim=1000):
     tot_rate = np.sum([np.sum(f[flux]) for
                        flux in settings['ftypes']])
     for flux in settings['ftypes']:
-        print('Fraction of {} : {:.2f}'.format(flux, np.sum(f[flux]) / tot_rate))
+        print('Frac of {} : {:.2f}'.format(flux, np.sum(f[flux]) / tot_rate))
         N_events = int(NSim * np.sum(f[flux]) / tot_rate)
         draw = np.random.choice(range(len(f)),
                                 N_events,
@@ -314,6 +313,7 @@ def plotLLH(llhfile, outfile, tbdata):
     ax.set_xlabel(r'$LLH$')
     ax.set_ylabel('Prob')
     ax.set_yscale('log')
+    ax.set_xlim(-20)
     llhNu = likelihood(EHE_event, tbdata, timeBins)
     plt.axvline(llhNu)
     plt.grid()
@@ -341,7 +341,9 @@ if __name__ == '__main__':
     # pBG = BGRatePDF(f)
     print('Generating PDFs..Finished')
 
-    filename = 'output/llh_%i_%.1f_%i.npy' % (settings['Nsim'], settings['gamma'], jobN)
+    filename = 'output/llh_%i_%.1f_%i.npy' % (settings['Nsim'],
+                                              settings['gamma'],
+                                              jobN)
     simulate(f, timeBins, filename, tbdata, settings['Nsim'])
 
     plotLLH(filename,
