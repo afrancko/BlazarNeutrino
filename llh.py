@@ -24,6 +24,7 @@ def setNewEdges(edges):
 # ------------------------------- Settings ---------------------------- #
 
 nugen_path = '/data/user/tglauch/EHE/processed/combined.npy'
+LCC_path = "/home/annaf/BlazarNeutrino/data/myCat.fits"
 
 settings = {'E_reco': 'NPE',
             'zen_reco': 'mpe_zen',
@@ -110,8 +111,7 @@ def read3FGL():
 
 
 def readLCCat():
-    file_name = "data/myCat.fits"
-    hdulist = fits.open(file_name)
+    hdulist = fits.open(LCC_path)
     tbdata = hdulist[1].data
 
     timeBins = []
@@ -184,8 +184,6 @@ def get3FGL(ra, dec, sigma, neuTime, tbdata, timeBins):
                                ra, dec)
     mask = dist < circ
     foundSources = tbdata[mask]
-    if len(foundSources) != 0:
-        print "found %i sources close by" % len(foundSources)
     if len(foundSources) == 0:
         return None
     # this is a hack to get the flux of the measured EHE event
@@ -207,6 +205,7 @@ def get3FGL(ra, dec, sigma, neuTime, tbdata, timeBins):
         foundSources = foundSources[tsMask]
     retval = np.deg2rad(foundSources['RAJ2000']), \
         np.deg2rad(foundSources['DEJ2000']), fluxNeuTime
+    print "found %i sources close by" % len(foundSources)
     return retval
 
 
@@ -252,7 +251,7 @@ def likelihood(sim, tbdata, timeBins):
     print('E: {} ra: {} coszen: {} \n \
            sigma: {} time : {}'.format(en, ra, coszen,
                                        sigma, neuTime,))
-
+    print np.log(np.sum(sourceTerm))
     # llh = -2 * np.log(sigma) + np.log(np.sum(sourceTerm)) - np.log(BGRateTerm) + np.log(energyTerm)
     llh = -2 * np.log(sigma) + np.log(np.sum(sourceTerm)) + E_ratio - coszen_prob
     print('Likelihood: {} \n'.format(llh))
@@ -311,8 +310,8 @@ def plotLLH(llhfile, outfile, tbdata):
     llh = np.load(llhfile)
     bins = np.linspace(-20, 25, 50)
     fig, ax = newfig(0.9)
-    X2 = np.sort(llh)
-    F2 = np.ones(len(llh)) - np.array(range(len(llh)))/float(len(llh))
+    # X2 = np.sort(llh)
+    F2 = np.ones(len(llh)) - np.array(range(len(llh))) / float(len(llh))
     ax.plot(X2, F2)
     ax.set_xlabel(r'$LLH$')
     ax.set_ylabel('Prob')
@@ -337,7 +336,7 @@ if __name__ == '__main__':
     mask = np.isnan(f['cr'])
     f = f[~mask]
     # read 3FGL catalog
-    #tbdata, timeBins = read3FGL()
+    # tbdata, timeBins = read3FGL()
     tbdata, timeBins = readLCCat()
     print('Read Cataloge...Finished')
 
