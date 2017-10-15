@@ -12,6 +12,7 @@ import pyfits as fits
 import sys
 from numpy.lib.recfunctions import rec_append_fields
 from scipy.interpolate import interp2d, InterpolatedUnivariateSpline
+import os
 
 
 def setNewEdges(edges):
@@ -33,7 +34,7 @@ settings = {'E_reco': 'NPE',
             'sigma': 'cr',
             'gamma': 2.1,
             'ftypes': ['astro', 'atmo', 'prompt'],  # atmo = conv..sry for that
-            'Nsim': 1000,
+            'Nsim': 100000,
             'Phi0': 0.91}
 
 dtype = [("en", np.float64),
@@ -54,8 +55,7 @@ EHE_event = np.array((5784.9552,
                       58014), #-9 #MJD of EHE event #shift event by 4 days to put it in last LC bin
                      dtype=dtype)
 
-E_spline = np.load('spline.npy')[()]
-coszen_spline = np.load('coszen_spl.npy')[()]
+
 
 # --------------------------------------------------------------------------- #
 
@@ -82,33 +82,32 @@ def create_splines(f):
     mask = np.isnan(f['mpe_zen'])
 
     # energy ratio 2D spline
+    print('Create Energy Spline..check yourself whether it is ok')
     for flux in settings['ftypes']:
         x = np.cos(f['mpe_zen'][~mask])
         y = np.log10(f['NPE'][~mask])
-        H_atm, xedges, yedges = np.histogram2d(x, y,
-                                               weights=f[flux][~mask],
-                                               bins=(30, 30), normed=True)
+        H, xedges, yedges = np.histogram2d(x, y,
+                                           weights=f[flux][~mask],
+                                           bins=(30, 30), normed=True)
         H = np.ma.masked_array(norm_hist(H).T)
         H.mask = (H <= 0)
-        histos[flux] == H
+        Hs[flux] = H
 
     spline = interp2d(setNewEdges(xedges),
                       setNewEdges(yedges),
                       np.log10(Hs['astro'] / (Hs['atmo'] + Hs['prompt'])))
-    np.save('spline.npy', spline)
+    np.save('E_spline.npy', spline)
+    print(10**(spline(np.linspace(-1,1,20), 6.0)))
 
     # zenith dist 1D spline
-    convs, edges = np.histogram(np.cos(f['mpe_zen'][~mask]),
-                                weights=f['atmo'][~mask],
-                                bins=30, density=True)
-    prompts, edges = np.histogram(np.cos(f['mpe_zen'][~mask]),
-                                  weights=f['prompt'][~mask],
-                                  bins=30, density=True)
-    data = np.log10((convs + prompts) / (np.sum(convs + prompts)))
-    ax.plot(setNewEdges(edges), data, label='data')
+    print('Create Zenith Spline...Check if ok..')
+    tot_rate = f['atmo'][~mask] + f['prompt'][~mask]
+    vals, edges = np.histogram(np.cos(f['mpe_zen'][~mask]),
+                               weights=tot_rate,
+                               bins=30, density=True)
     zen_spl = InterpolatedUnivariateSpline(setNewEdges(edges),
-                                           data,
-                                           k=3)
+                                           np.log10(vals), k=3)
+    print(10**zen_spl(setNewEdges(edges)))
     np.save('coszen_spl.npy', zen_spl)
 
 
@@ -242,8 +241,8 @@ def get_sources(ra, dec, sigma, neuTime, tbdata, timeBins):
         tsNeuTime = np.asarray(tsNeuTime)
         tsMask = tsNeuTime < 4
         tsMask = np.asarray(tsMask)
-        fluxNeuTime = fluxNeuTime[tsMask]
-        foundSources = foundSources[tsMask]
+        fluxNeuTime = fluxNeuTime #[tsMask]
+        foundSources = foundSources #[tsMask]
     retval = np.deg2rad(foundSources['RAJ2000']), \
         np.deg2rad(foundSources['DEJ2000']), fluxNeuTime
     if not len(foundSources) == 0:
@@ -291,7 +290,7 @@ def likelihood(sim, tbdata, timeBins):
 
     coszen = np.cos(dec + 0.5 * np.pi)
     E_ratio = np.log(10 ** E_spline(coszen, np.log10(en))[0])
-    coszen_prob = np.log(10**(coszen_spline(coszen)/ (2 * np.pi)))
+    coszen_prob = np.log(10 ** (coszen_spline(coszen)) / (2 * np.pi))
     print('E: {} ra: {} coszen: {} \n \
            sigma: {} time : {}'.format(en, ra, coszen,
                                        sigma, neuTime,))
@@ -384,6 +383,12 @@ if __name__ == '__main__':
     # tbdata, timeBins = read3FGL()
     tbdata, timeBins = readLCCat()
     print('Read Cataloge...Finished')
+    if not os.path.exists('coszen_spl.npy') or \
+        not os.path.exists('E_spline.npy'):
+            print('Create New Splines..')
+            create_splines(f)
+    E_spline = np.load('E_spline.npy')[()]
+    coszen_spline = np.load('coszen_spl.npy')[()]
 
     # cosZenBins, EPDFSig, EPDFBG = EnergyPDF(f, settings['gamma'])
     # pBG = BGRatePDF(f)
