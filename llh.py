@@ -43,12 +43,13 @@ dtype = [("en", np.float64),
 # IC170911
 # NPE: 5784.9552
 # MuEX: 120000 GeV
+# MJD : 58018.87118553)
 
 EHE_event = np.array((5784.9552,
                       np.deg2rad(77.43),
                       np.deg2rad(5.72),
                       np.deg2rad(0.25),
-                      -9),
+                      58014), #-9 #MJD of EHE event #shift event by 4 days to put it in last LC bin
                      dtype=dtype)
 
 spline = np.load('spline.npy')[()]
@@ -195,13 +196,15 @@ def get3FGL(ra, dec, sigma, neuTime, tbdata, timeBins):
         foundSources = tbdata[mask]
     else:
         fluxHist = foundSources['Flux_History']
-        # ts = foundSources['TS']
+        ts = foundSources['TS']
         fluxNeuTime = [f[getTBin(neuTime, timeBins)] for f in fluxHist]
-        # tsNeuTime = [f[getTBin(neuTime, timeBins)] for f in ts]
-        # tsMask = tsNeuTime < 4
-        # tsMask = np.asarray(tsMask)
-        # fluxNeuTime = fluxNeuTime[tsMask]
-        # foundSources = foundSources[tsMask]
+        tsNeuTime = [f[getTBin(neuTime, timeBins)] for f in ts]
+        fluxNeuTime = np.asarray(fluxNeuTime)
+        tsNeuTime = np.asarray(tsNeuTime)
+        tsMask = tsNeuTime < 4
+        tsMask = np.asarray(tsMask)
+        fluxNeuTime = fluxNeuTime[tsMask]
+        foundSources = foundSources[tsMask]
     retval = np.deg2rad(foundSources['RAJ2000']), \
         np.deg2rad(foundSources['DEJ2000']), fluxNeuTime
     return retval
@@ -286,6 +289,7 @@ def simulate(f, timeBins, filename, tbdata, NSim=1000):
     # atmoSim = AtmWeight[draw]
     tmin = timeBins[0]
     tmax = timeBins[-1]
+
     # draw uniform neutrino times within catalog time span
     neuTimeSim = np.random.uniform(tmin, tmax, size=len(sim['en']))
     sim['neuTime'] = neuTimeSim
@@ -333,8 +337,8 @@ if __name__ == '__main__':
     mask = np.isnan(f['cr'])
     f = f[~mask]
     # read 3FGL catalog
-    tbdata, timeBins = read3FGL()
-    # tbdata, timeBins = readLCCat()
+    #tbdata, timeBins = read3FGL()
+    tbdata, timeBins = readLCCat()
     print('Read Cataloge...Finished')
 
     # cosZenBins, EPDFSig, EPDFBG = EnergyPDF(f, settings['gamma'])
