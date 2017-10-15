@@ -11,6 +11,7 @@ from scipy.interpolate import interp1d
 import pyfits as fits
 import sys
 from numpy.lib.recfunctions import rec_append_fields
+from scipy.interpolate import interp2d, InterpolatedUnivariateSpline
 
 
 def setNewEdges(edges):
@@ -69,6 +70,46 @@ dtype = [("en", np.float64),
          ("dec", np.float64),
          ("sigma", np.float64),
          ("neuTime", np.float64)]
+
+
+def norm_hist(h):
+    h = np.array([i / np.sum(i) if np.sum(i) > 0 else i / 1. for i in h])
+    return h
+
+
+def create_splines(f):
+    Hs = dict()
+    mask = np.isnan(f['mpe_zen'])
+
+    # energy ratio 2D spline
+    for flux in settings['ftypes']:
+        x = np.cos(f['mpe_zen'][~mask])
+        y = np.log10(f['NPE'][~mask])
+        H_atm, xedges, yedges = np.histogram2d(x, y,
+                                               weights=f[flux][~mask],
+                                               bins=(30, 30), normed=True)
+        H = np.ma.masked_array(norm_hist(H).T)
+        H.mask = (H <= 0)
+        histos[flux] == H
+
+    spline = interp2d(setNewEdges(xedges),
+                      setNewEdges(yedges),
+                      np.log10(Hs['astro'] / (Hs['atmo'] + Hs['prompt'])))
+    np.save('spline.npy', spline)
+
+    # zenith dist 1D spline
+    convs, edges = np.histogram(np.cos(f['mpe_zen'][~mask]),
+                                weights=f['atmo'][~mask],
+                                bins=30, density=True)
+    prompts, edges = np.histogram(np.cos(f['mpe_zen'][~mask]),
+                                  weights=f['prompt'][~mask],
+                                  bins=30, density=True)
+    data = np.log10((convs + prompts) / (np.sum(convs + prompts)))
+    ax.plot(setNewEdges(edges), data, label='data')
+    zen_spl = InterpolatedUnivariateSpline(setNewEdges(edges),
+                                           data,
+                                           k=3)
+    np.save('coszen_spl.npy', zen_spl)
 
 
 def GreatCircleDistance(ra_1, dec_1, ra_2, dec_2, use_astro=False):
@@ -251,7 +292,6 @@ def likelihood(sim, tbdata, timeBins):
     print('E: {} ra: {} coszen: {} \n \
            sigma: {} time : {}'.format(en, ra, coszen,
                                        sigma, neuTime,))
-    print np.log(np.sum(sourceTerm))
     # llh = -2 * np.log(sigma) + np.log(np.sum(sourceTerm)) - np.log(BGRateTerm) + np.log(energyTerm)
     llh = -2 * np.log(sigma) + np.log(np.sum(sourceTerm)) + E_ratio - coszen_prob
     print('Likelihood: {} \n'.format(llh))
