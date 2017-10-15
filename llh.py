@@ -213,9 +213,9 @@ def EnergyPDF(f, gammaSig=2.1):
     return cosZenBins, EPDFSig, EPDFBG
 
 
-# get extragal. 3FGL sources and flux
+# get extragal. sources and flux
 # ra, dec in rad, neuTime in Fermi MET
-def get3FGL(ra, dec, sigma, neuTime, tbdata, timeBins):
+def get_sources(ra, dec, sigma, neuTime, tbdata, timeBins):
     circ = sigma * 3.
     if circ > np.deg2rad(5):
         circ = np.deg2rad(5)
@@ -246,7 +246,8 @@ def get3FGL(ra, dec, sigma, neuTime, tbdata, timeBins):
         foundSources = foundSources[tsMask]
     retval = np.deg2rad(foundSources['RAJ2000']), \
         np.deg2rad(foundSources['DEJ2000']), fluxNeuTime
-    print "found %i sources close by" % len(foundSources)
+    if not len(foundSources) == 0:
+        print "found %i sources close by" % len(foundSources)
     return retval
 
 
@@ -261,8 +262,10 @@ def likelihood(sim, tbdata, timeBins):
     sigma = sim['sigma']
     neuTime = sim['neuTime']
 
-    foundSources = get3FGL(ra, dec, sigma, neuTime, tbdata, timeBins)
+    foundSources = get_sources(ra, dec, sigma, neuTime, tbdata, timeBins)
     if foundSources is None:
+        return -99
+    if len(foundSources[0]) == 0:
         return -99
 
     raS, decS, fluxS = foundSources
@@ -295,6 +298,7 @@ def likelihood(sim, tbdata, timeBins):
     # llh = -2 * np.log(sigma) + np.log(np.sum(sourceTerm)) - np.log(BGRateTerm) + np.log(energyTerm)
     llh = -2 * np.log(sigma) + np.log(np.sum(sourceTerm)) + E_ratio - coszen_prob
     print('Likelihood: {} \n'.format(llh))
+    print '----'
     return 2 * llh
 
 
@@ -350,13 +354,14 @@ def plotLLH(llhfile, outfile, tbdata):
     llh = np.load(llhfile)
     bins = np.linspace(-20, 25, 50)
     fig, ax = newfig(0.9)
-    # X2 = np.sort(llh)
+    X2 = np.sort(llh)
     F2 = np.ones(len(llh)) - np.array(range(len(llh))) / float(len(llh))
     ax.plot(X2, F2)
     ax.set_xlabel(r'$LLH$')
     ax.set_ylabel('Prob')
     ax.set_yscale('log')
     ax.set_xlim(-20)
+    print('Eval Event')
     llhNu = likelihood(EHE_event, tbdata, timeBins)
     plt.axvline(llhNu)
     plt.grid()
