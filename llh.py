@@ -52,7 +52,7 @@ EHE_event = np.array((5784.9552,
                       np.deg2rad(77.43),
                       np.deg2rad(5.72),
                       np.deg2rad(0.25),
-                      58014), #-9 #MJD of EHE event #shift event by 4 days to put it in last LC bin
+                      58014), #-9 #MJD of EHE event #shift event by 4 days to put it in last LC bin (new shifted LC is in the catalog!)
                      dtype=dtype)
 
 
@@ -140,7 +140,9 @@ def read3FGL():
     # get rid of extra spaces at the end
     mask = [c.strip() in eGal3FGL for c in tbdata['Class1']]
     mask = np.asarray(mask)
+    print "N sources: ", len(tbdata)
     tbdata = tbdata[mask]
+    print "N sources after cuts: ", len(tbdata)
 
     timeBins = []
 
@@ -153,6 +155,25 @@ def read3FGL():
 def readLCCat():
     hdulist = fits.open(LCC_path)
     tbdata = hdulist[1].data
+
+    eGal3FHL = ['BLL', 'FSRQ', 'RDG','sbg', 'NLSY1'
+                'bll', 'fsrq','agn', 'rdg', 'bcu']#,
+                #'', 'unknown']
+    eGal3FGL = ['css','BLL','bll','fsrq','FSRQ', 'agn','RDG',
+                'rdg','sey','BCU','bcu','GAL','gal','NLSY1',
+                'nlsy1','ssrq']#, '']
+    eGal2FAV = ['bll',#'none',
+                'bcu','fsrq',
+                'rdg', 'nlsy1',
+                'agn']
+    eGal = eGal3FHL + eGal3FGL + eGal2FAV
+
+    # get rid of extra spaces at the end
+    mask = [c.strip() in eGal for c in tbdata['Class1']]
+    mask = np.asarray(mask)
+    print "N sources: ", len(tbdata)
+    tbdata = tbdata[mask]
+    print "N sources after cuts: ", len(tbdata)
 
     timeBins = []
 
@@ -239,14 +260,18 @@ def get_sources(ra, dec, sigma, neuTime, tbdata, timeBins):
         tsNeuTime = [f[getTBin(neuTime, timeBins)] for f in ts]
         fluxNeuTime = np.asarray(fluxNeuTime)
         tsNeuTime = np.asarray(tsNeuTime)
-        tsMask = tsNeuTime < 4
+        tsMask = tsNeuTime > 4
         tsMask = np.asarray(tsMask)
-        fluxNeuTime = fluxNeuTime #[tsMask]
-        foundSources = foundSources #[tsMask]
+        fluxNeuTime = fluxNeuTime[tsMask]
+        foundSources = foundSources[tsMask]
+        if (foundSources) == 0:
+            return None
     retval = np.deg2rad(foundSources['RAJ2000']), \
         np.deg2rad(foundSources['DEJ2000']), fluxNeuTime
     if not len(foundSources) == 0:
         print "found %i sources close by" % len(foundSources)
+        print "flux ", fluxNeuTime
+        print "ts ", tsNeuTime
     return retval
 
 
@@ -263,9 +288,9 @@ def likelihood(sim, tbdata, timeBins):
 
     foundSources = get_sources(ra, dec, sigma, neuTime, tbdata, timeBins)
     if foundSources is None:
-        return -99
+        return -99, -99, -99
     if len(foundSources[0]) == 0:
-        return -99
+        return -99, -99, -99
 
     raS, decS, fluxS = foundSources
 
@@ -294,11 +319,14 @@ def likelihood(sim, tbdata, timeBins):
     print('E: {} ra: {} coszen: {} \n \
            sigma: {} time : {}'.format(en, ra, coszen,
                                        sigma, neuTime,))
+    print "E_ratio ", E_ratio
+    print "coszen_prob ", coszen_prob
     # llh = -2 * np.log(sigma) + np.log(np.sum(sourceTerm)) - np.log(BGRateTerm) + np.log(energyTerm)
     llh = -2 * np.log(sigma) + np.log(np.sum(sourceTerm)) + E_ratio - coszen_prob
     print('Likelihood: {} \n'.format(llh))
     print '----'
-    return 2 * llh
+    print (2 * llh), E_ratio, coszen_prob
+    return (2 * llh), E_ratio, coszen_prob
 
 
 def simulate(f, timeBins, filename, tbdata, NSim=1000):
@@ -339,14 +367,23 @@ def simulate(f, timeBins, filename, tbdata, NSim=1000):
         zip(*[sim[ty[0]] for ty in dtype]), dtype=dtype)
 
     llh = []
+    e_rat = []
+    cosz_prob = []
     for i in range(len(sim)):
         # if i % 1 == 0:
         #     print i, sim[i]['en'], sim[i]['ra'], sim[i]['dec'], sim[i]['sigma'], sim[i]['neuTime']
-
-        llh.append(likelihood(sim[i], tbdata, timeBins))
+        l, er, cosz = likelihood(sim[i], tbdata, timeBins)
+        llh.append(l)
+        e_rat.append(er)
+        cosz_prob.append(cosz)
 
     llh = np.asarray(llh)
+    e_rat = np.asarray(e_rat)
+    cosz_prob = np.asarray(cosz_prob)
+
     np.save(filename, llh)
+    np.save(filename.replace('llh','ERatio'), e_rat)
+    np.save(filename.replace('llh','CosZProb'), cosz_prob)
 
 
 def plotLLH(llhfile, outfile, tbdata):
@@ -356,16 +393,29 @@ def plotLLH(llhfile, outfile, tbdata):
     X2 = np.sort(llh)
     F2 = np.ones(len(llh)) - np.array(range(len(llh))) / float(len(llh))
     ax.plot(X2, F2)
-    ax.set_xlabel(r'$LLH$')
+    ax.set_xlabel(r'$LLH Ratio$')
     ax.set_ylabel('Prob')
     ax.set_yscale('log')
-    ax.set_xlim(-20)
+    ax.set_xlim(-100)
     print('Eval Event')
-    llhNu = likelihood(EHE_event, tbdata, timeBins)
-    plt.axvline(llhNu)
+    llhNu, enNu, coszNu = likelihood(EHE_event, tbdata, timeBins)
+    #plt.axvline(llhNu)
     plt.grid()
     plt.savefig(outfile)
-    # plt.show()
+
+    plt.figure()
+    eratio = np.load(llhfile.replace('llh','ERatio'))
+    plt.hist(eratio[eratio>-90],bins=50)
+    plt.axvline(enNu)
+    plt.savefig(outfile.replace('llh','ERatio'))
+
+    plt.figure()
+    coszp = np.load(llhfile.replace('llh','CosZProb'))
+    plt.hist(coszp[coszp>-90],bins=50)
+    plt.axvline(coszNu)
+    plt.savefig(outfile.replace('llh','CosZProb'))
+
+    #plt.show()
 
 
 if __name__ == '__main__':
