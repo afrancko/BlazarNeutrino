@@ -34,7 +34,7 @@ settings = {'E_reco': 'NPE',
             'sigma': 'cr',
             'gamma': 2.1,
             'ftypes': ['astro', 'atmo', 'prompt'],  # atmo = conv..sry for that
-            'Nsim': 100000,
+            'Nsim': 10000,
             'Phi0': 0.91}
 
 dtype = [("en", np.float64),
@@ -71,6 +71,15 @@ dtype = [("en", np.float64),
          ("sigma", np.float64),
          ("neuTime", np.float64)]
 
+
+def getNormInBin(tbdata):
+    binNorms = np.zeros_like(tbdata[0]['Flux_History'])
+    for ti in range(len(binNorms)):
+       for si in range(len(tbdata)):
+          if tbdata[si]['TS'][ti]>4:# and tbdata[si]['npred'][ti]>3:
+             binNorms[ti]+=tbdata[si]['Flux_History'][ti]
+    np.save('data/binNorms.npy',binNorms)
+    return binNorms
 
 def norm_hist(h):
     h = np.array([i / np.sum(i) if np.sum(i) > 0 else i / 1. for i in h])
@@ -235,7 +244,7 @@ def EnergyPDF(f, gammaSig=2.1):
 
 # get extragal. sources and flux
 # ra, dec in rad, neuTime in Fermi MET
-def get_sources(ra, dec, sigma, neuTime, tbdata, timeBins):
+def get_sources(ra, dec, sigma, neuTime, tbdata, timeBins, binNorms):
     circ = sigma * 3.
     if circ > np.deg2rad(5):
         circ = np.deg2rad(5)
@@ -247,30 +256,26 @@ def get_sources(ra, dec, sigma, neuTime, tbdata, timeBins):
     foundSources = tbdata[mask]
     if len(foundSources) == 0:
         return None
-    # this is a hack to get the flux of the measured EHE event
-    # which is outside of the catalog time
-    if neuTime < 0:
-        fluxNeuTime = [0.39e-6]
-        mask = dist < np.deg2rad(0.5)
-        foundSources = tbdata[mask]
-    else:
-        fluxHist = foundSources['Flux_History']
-        ts = foundSources['TS']
-        fluxNeuTime = [f[getTBin(neuTime, timeBins)] for f in fluxHist]
-        tsNeuTime = [f[getTBin(neuTime, timeBins)] for f in ts]
-        fluxNeuTime = np.asarray(fluxNeuTime)
-        tsNeuTime = np.asarray(tsNeuTime)
-        tsMask = tsNeuTime > 4
-        tsMask = np.asarray(tsMask)
-        fluxNeuTime = fluxNeuTime[tsMask]
-        foundSources = foundSources[tsMask]
-        if (foundSources) == 0:
-            return None
+        
+    fluxHist = foundSources['Flux_History']
+    ts = foundSources['TS']
+    tbin = getTBin(neuTime, timeBins)
+    fluxNeuTime = [f[tbin] for f in fluxHist]
+    tsNeuTime = [f[tbin] for f in ts]
+    fluxNeuTime = np.asarray(fluxNeuTime)
+    tsNeuTime = np.asarray(tsNeuTime)
+    tsMask = tsNeuTime > 4
+    tsMask = np.asarray(tsMask)
+    fluxNeuTime = fluxNeuTime[tsMask]
+    foundSources = foundSources[tsMask]
+    if (foundSources) == 0:
+       return None
+
     retval = np.deg2rad(foundSources['RAJ2000']), \
-        np.deg2rad(foundSources['DEJ2000']), fluxNeuTime
+        np.deg2rad(foundSources['DEJ2000']), fluxNeuTime/binNorms[tbin]
     if not len(foundSources) == 0:
         print "found %i sources close by" % len(foundSources)
-        print "flux ", fluxNeuTime
+        print "flux weight", fluxNeuTime/binNorms[tbin]
         print "ts ", tsNeuTime
     return retval
 
@@ -278,7 +283,7 @@ def get_sources(ra, dec, sigma, neuTime, tbdata, timeBins):
 # def likelihood(sim, cosZenBins, EPDFSig, EPDFBG,
 #                pBG, tbdata, timeBins):
 
-def likelihood(sim, tbdata, timeBins):
+def likelihood(sim, tbdata, timeBins, binNorms):
 
     en = sim['en']
     ra = sim['ra']
@@ -286,11 +291,11 @@ def likelihood(sim, tbdata, timeBins):
     sigma = sim['sigma']
     neuTime = sim['neuTime']
 
-    foundSources = get_sources(ra, dec, sigma, neuTime, tbdata, timeBins)
+    foundSources = get_sources(ra, dec, sigma, neuTime, tbdata, timeBins, binNorms)
     if foundSources is None:
-        return -99, -99, -99
+        return 0, -99, -99
     if len(foundSources[0]) == 0:
-        return -99, -99, -99
+        return 0, -99, -99
 
     raS, decS, fluxS = foundSources
 
@@ -298,7 +303,7 @@ def likelihood(sim, tbdata, timeBins):
     mask = fluxS < 1e-12
     fluxS[mask] = 1e-12
 
-    fluxNorm = 1e-6
+    fluxNorm = 1. #1e-6
     sourceTerm = fluxS / fluxNorm * np.exp(-GreatCircleDistance(ra, dec, raS, decS)**2 / (2. * sigma**2))
 
     # cosZenBins = np.asarray(cosZenBins)
@@ -315,21 +320,22 @@ def likelihood(sim, tbdata, timeBins):
 
     coszen = np.cos(dec + 0.5 * np.pi)
     E_ratio = np.log(10 ** E_spline(coszen, np.log10(en))[0])
-    coszen_prob = np.log(10 ** (coszen_spline(coszen)) / (2 * np.pi))
+    coszen_prob = np.log(10 ** (coszen_spline(coszen)) / (2 * np.pi *len(tbdata)))
     print('E: {} ra: {} coszen: {} \n \
            sigma: {} time : {}'.format(en, ra, coszen,
                                        sigma, neuTime,))
-    print "E_ratio ", E_ratio
-    print "coszen_prob ", coszen_prob
+
     # llh = -2 * np.log(sigma) + np.log(np.sum(sourceTerm)) - np.log(BGRateTerm) + np.log(energyTerm)
     llh = -2 * np.log(sigma) + np.log(np.sum(sourceTerm)) + E_ratio - coszen_prob
+    if llh<0:
+       llh = 0
     print('Likelihood: {} \n'.format(llh))
     print '----'
     print (2 * llh), E_ratio, coszen_prob
     return (2 * llh), E_ratio, coszen_prob
 
 
-def simulate(f, timeBins, filename, tbdata, NSim=1000):
+def simulate(f, timeBins, filename, tbdata, binNorms, NSim=1000):
 # zen, azi, recoE, cr, AtmWeight,
 
     enSim = []
@@ -372,7 +378,7 @@ def simulate(f, timeBins, filename, tbdata, NSim=1000):
     for i in range(len(sim)):
         # if i % 1 == 0:
         #     print i, sim[i]['en'], sim[i]['ra'], sim[i]['dec'], sim[i]['sigma'], sim[i]['neuTime']
-        l, er, cosz = likelihood(sim[i], tbdata, timeBins)
+        l, er, cosz = likelihood(sim[i], tbdata, timeBins,binNorms)
         llh.append(l)
         e_rat.append(er)
         cosz_prob.append(cosz)
@@ -386,7 +392,7 @@ def simulate(f, timeBins, filename, tbdata, NSim=1000):
     np.save(filename.replace('llh','CosZProb'), cosz_prob)
 
 
-def plotLLH(llhfile, outfile, tbdata):
+def plotLLH(llhfile, outfile, tbdata,timeBins,binNorms):
     llh = np.load(llhfile)
     bins = np.linspace(-20, 25, 50)
     fig, ax = newfig(0.9)
@@ -398,7 +404,7 @@ def plotLLH(llhfile, outfile, tbdata):
     ax.set_yscale('log')
     ax.set_xlim(-100)
     print('Eval Event')
-    llhNu, enNu, coszNu = likelihood(EHE_event, tbdata, timeBins)
+    llhNu, enNu, coszNu = likelihood(EHE_event, tbdata, timeBins,binNorms)
     #plt.axvline(llhNu)
     plt.grid()
     plt.savefig(outfile)
@@ -440,6 +446,8 @@ if __name__ == '__main__':
     E_spline = np.load('E_spline.npy')[()]
     coszen_spline = np.load('coszen_spl.npy')[()]
 
+    binNorms = getNormInBin(tbdata)
+
     # cosZenBins, EPDFSig, EPDFBG = EnergyPDF(f, settings['gamma'])
     # pBG = BGRatePDF(f)
     print('Generating PDFs..Finished')
@@ -447,7 +455,7 @@ if __name__ == '__main__':
     filename = 'output/llh_%i_%.1f_%i.npy' % (settings['Nsim'],
                                               settings['gamma'],
                                               jobN)
-    simulate(f, timeBins, filename, tbdata, settings['Nsim'])
+    simulate(f, timeBins, filename, tbdata, binNorms, settings['Nsim'])
 
     plotLLH(filename,
-            filename.replace('output', 'plots').replace('npy', 'png'), tbdata)
+            filename.replace('output', 'plots').replace('npy', 'png'), tbdata, timeBins, binNorms)
