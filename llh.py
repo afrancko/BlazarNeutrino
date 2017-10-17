@@ -26,7 +26,8 @@ def setNewEdges(edges):
 # ------------------------------- Settings ---------------------------- #
 
 nugen_path = '/data/user/tglauch/EHE/processed/combined.npy'
-LCC_path = "/home/annaf/BlazarNeutrino/data/myCat.fits"
+#LCC_path = "/home/annaf/BlazarNeutrino/data/myCat.fits"
+LCC_path = "/home/annaf/BlazarNeutrino/data/myCat2747.fits"
 
 settings = {'E_reco': 'NPE',
             'zen_reco': 'mpe_zen',
@@ -34,7 +35,7 @@ settings = {'E_reco': 'NPE',
             'sigma': 'cr',
             'gamma': 2.1,
             'ftypes': ['astro', 'atmo', 'prompt'],  # atmo = conv..sry for that
-            'Nsim': 10000,
+            'Nsim': 100000,
             'Phi0': 0.91}
 
 dtype = [("en", np.float64),
@@ -73,11 +74,11 @@ dtype = [("en", np.float64),
 
 
 def getNormInBin(tbdata):
-    binNorms = np.zeros_like(tbdata[0]['Flux_History'])
+    binNorms = np.zeros_like(tbdata[0]['EFlux_History'])
     for ti in range(len(binNorms)):
        for si in range(len(tbdata)):
           if tbdata[si]['TS'][ti]>4:# and tbdata[si]['npred'][ti]>3:
-             binNorms[ti]+=tbdata[si]['Flux_History'][ti]
+             binNorms[ti]+=tbdata[si]['EFlux_History'][ti]
     np.save('data/binNorms.npy',binNorms)
     return binNorms
 
@@ -136,42 +137,17 @@ def GreatCircleDistance(ra_1, dec_1, ra_2, dec_2, use_astro=False):
     return 2. * np.arcsin(np.sqrt(x))
 
 
-def read3FGL():
-    file_name = "data/gll_psc_v16.fit"
-    hdulist = fits.open(file_name)
-    tbdata = hdulist[1].data
-
-    # select only extra gal sources
-    eGal3FGL = ['css', 'BLL', 'bll', 'fsrq', 'FSRQ', 'agn', 'RDG',
-                'rdg', 'sey', 'BCU', 'bcu', 'GAL', 'gal', 'NLSY1',
-                'nlsy1', 'ssrq']
-
-    # get rid of extra spaces at the end
-    mask = [c.strip() in eGal3FGL for c in tbdata['Class1']]
-    mask = np.asarray(mask)
-    print "N sources: ", len(tbdata)
-    tbdata = tbdata[mask]
-    print "N sources after cuts: ", len(tbdata)
-
-    timeBins = []
-
-    for i in range(len(hdulist['Hist_start'].data)):
-        timeBins.append(hdulist['Hist_start'].data[i][0])
-
-    return tbdata, np.asarray(timeBins)
-
-
 def readLCCat():
     hdulist = fits.open(LCC_path)
     tbdata = hdulist[1].data
 
     eGal3FHL = ['BLL', 'FSRQ', 'RDG','sbg', 'NLSY1'
-                'bll', 'fsrq','agn', 'rdg', 'bcu']#,
-                #'', 'unknown']
+                'bll', 'fsrq','agn', 'rdg', 'bcu',
+                '', 'unknown']
     eGal3FGL = ['css','BLL','bll','fsrq','FSRQ', 'agn','RDG',
                 'rdg','sey','BCU','bcu','GAL','gal','NLSY1',
-                'nlsy1','ssrq']#, '']
-    eGal2FAV = ['bll',#'none',
+                'nlsy1','ssrq','']
+    eGal2FAV = ['bll','none',
                 'bcu','fsrq',
                 'rdg', 'nlsy1',
                 'agn']
@@ -196,52 +172,6 @@ def getTBin(testT, timeBins):
     ind = np.searchsorted(timeBins, testT, side='right')
     return ind - 1
 
-
-def BGRatePDF(f, plot=False):
-    # get BG rate as function of zenith PDF
-    zen = f[settings['zen_reco']]
-    AtmWeight = f['atmo']
-    bins = np.linspace(-1, 1, 20)
-    nBG, binsBG, patches = plt.hist(np.cos(zen), bins=bins,
-                                    weights=AtmWeight,
-                                    normed=True)  # bins=bins)
-    binCenter = (binsBG[1:] - binsBG[:-1]) * 0.5 + binsBG[:-1]
-    pBG = interp1d(binCenter, nBG, kind='nearest',
-                   fill_value=0.0, bounds_error=False)
-    return pBG
-
-
-def EnergyPDF(f, gammaSig=2.1):
-    # get energy PDF
-    zen = f[settings['zen_reco']]
-    recoE = f[settings['E_reco']]
-    AtmWeight = f['atmo']
-    cosZenBins = [-1, -0.5, -0.25, -0.1, 1]
-    cosZenBins = np.asarray(cosZenBins)
-    EPDFSig = []
-    EPDFBG = []
-    for zi in range(len(cosZenBins) - 1):
-        zMask = [(np.cos(zen) > cosZenBins[zi]) & (np.cos(zen) <= cosZenBins[zi + 1])]
-        print "zenith band ", cosZenBins[zi], cosZenBins[zi + 1]
-
-        bins = np.linspace(3, 7, 15)
-        nSig, binsSig, patches = plt.hist(np.log10(recoE[zMask]),
-                                          weights=f['astro'][zMask],
-                                          normed=True, bins=bins, alpha=0.5,
-                                          label='E$^{-2.1}$')
-        nBG, binsBG, patches = plt.hist(np.log10(recoE[zMask]),
-                                        weights=AtmWeight[zMask],
-                                        normed=True, bins=bins,
-                                        alpha=0.5, label='E$^{-2.7}$')
-
-        binCenter = (binsSig[1:] - binsSig[:-1]) * 0.5 + binsSig[:-1]
-        EPDFSig.append(interp1d(binCenter, nSig, kind='cubic',
-                                fill_value=0.0, bounds_error=False))
-        EPDFBG.append(interp1d(binCenter, nBG, kind='cubic',
-                               fill_value=0.0, bounds_error=False))
-    return cosZenBins, EPDFSig, EPDFBG
-
-
 # get extragal. sources and flux
 # ra, dec in rad, neuTime in Fermi MET
 def get_sources(ra, dec, sigma, neuTime, tbdata, timeBins, binNorms):
@@ -257,7 +187,7 @@ def get_sources(ra, dec, sigma, neuTime, tbdata, timeBins, binNorms):
     if len(foundSources) == 0:
         return None
         
-    fluxHist = foundSources['Flux_History']
+    fluxHist = foundSources['EFlux_History']
     ts = foundSources['TS']
     tbin = getTBin(neuTime, timeBins)
     fluxNeuTime = [f[tbin] for f in fluxHist]
@@ -279,10 +209,6 @@ def get_sources(ra, dec, sigma, neuTime, tbdata, timeBins, binNorms):
         print "ts ", tsNeuTime
     return retval
 
-
-# def likelihood(sim, cosZenBins, EPDFSig, EPDFBG,
-#                pBG, tbdata, timeBins):
-
 def likelihood(sim, tbdata, timeBins, binNorms):
 
     en = sim['en']
@@ -303,29 +229,15 @@ def likelihood(sim, tbdata, timeBins, binNorms):
     mask = fluxS < 1e-12
     fluxS[mask] = 1e-12
 
-    fluxNorm = 1. #1e-6
-    sourceTerm = fluxS / fluxNorm * np.exp(-GreatCircleDistance(ra, dec, raS, decS)**2 / (2. * sigma**2))
-
-    # cosZenBins = np.asarray(cosZenBins)
-    # zi = cosZenBins[cosZenBins < np.cos(dec + 0.5 * np.pi)].size - 1
-
-    # if EPDFBG[zi](np.log10(en)) <= 0 or EPDFSig[zi](np.log10(en)) <= 0:
-    #     energyTerm = 1e-12
-    # else:
-    #     energyTerm = EPDFSig[zi](np.log10(en)) / EPDFBG[zi](np.log10(en))
-
-    # BGRateTerm = pBG(np.cos(dec + 0.5 * np.pi))
-    # if BGRateTerm < 1e-12:
-    #     BGRateTerm = 1e-12
+    sourceTerm = fluxS * np.exp(-GreatCircleDistance(ra, dec, raS, decS)**2 / (2. * sigma**2))
 
     coszen = np.cos(dec + 0.5 * np.pi)
     E_ratio = np.log(10 ** E_spline(coszen, np.log10(en))[0])
-    coszen_prob = np.log(10 ** (coszen_spline(coszen)) / (2 * np.pi *len(tbdata)))
+    coszen_prob = np.log(10 ** (coszen_spline(coszen)) / (2 * np.pi))
     print('E: {} ra: {} coszen: {} \n \
            sigma: {} time : {}'.format(en, ra, coszen,
                                        sigma, neuTime,))
 
-    # llh = -2 * np.log(sigma) + np.log(np.sum(sourceTerm)) - np.log(BGRateTerm) + np.log(energyTerm)
     llh = -2 * np.log(sigma) + np.log(np.sum(sourceTerm)) + E_ratio - coszen_prob
     if llh<0:
        llh = 0
@@ -361,7 +273,6 @@ def simulate(f, timeBins, filename, tbdata, binNorms, NSim=1000):
     sim['dec'] = np.array(zenSim) - 0.5 * np.pi
     sim['sigma'] = np.array(crSim)
 
-    # atmoSim = AtmWeight[draw]
     tmin = timeBins[0]
     tmax = timeBins[-1]
 
@@ -394,7 +305,7 @@ def simulate(f, timeBins, filename, tbdata, binNorms, NSim=1000):
 
 def plotLLH(llhfile, outfile, tbdata,timeBins,binNorms):
     llh = np.load(llhfile)
-    bins = np.linspace(-20, 25, 50)
+    bins = np.linspace(-1, 25, 50)
     fig, ax = newfig(0.9)
     X2 = np.sort(llh)
     F2 = np.ones(len(llh)) - np.array(range(len(llh))) / float(len(llh))
@@ -402,7 +313,7 @@ def plotLLH(llhfile, outfile, tbdata,timeBins,binNorms):
     ax.set_xlabel(r'$LLH Ratio$')
     ax.set_ylabel('Prob')
     ax.set_yscale('log')
-    ax.set_xlim(-100)
+    ax.set_xlim(-1)
     print('Eval Event')
     llhNu, enNu, coszNu = likelihood(EHE_event, tbdata, timeBins,binNorms)
     #plt.axvline(llhNu)
@@ -435,8 +346,7 @@ if __name__ == '__main__':
                           dtypes=np.float64)
     mask = np.isnan(f['cr'])
     f = f[~mask]
-    # read 3FGL catalog
-    # tbdata, timeBins = read3FGL()
+    # read light curve catalog
     tbdata, timeBins = readLCCat()
     print('Read Cataloge...Finished')
     if not os.path.exists('coszen_spl.npy') or \
@@ -448,8 +358,6 @@ if __name__ == '__main__':
 
     binNorms = getNormInBin(tbdata)
 
-    # cosZenBins, EPDFSig, EPDFBG = EnergyPDF(f, settings['gamma'])
-    # pBG = BGRatePDF(f)
     print('Generating PDFs..Finished')
 
     filename = 'output/llh_%i_%.1f_%i.npy' % (settings['Nsim'],
