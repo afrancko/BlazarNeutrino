@@ -11,7 +11,7 @@ from scipy.interpolate import interp1d
 import pyfits as fits
 import sys
 from numpy.lib.recfunctions import rec_append_fields
-from scipy.interpolate import interp2d, InterpolatedUnivariateSpline
+from scipy.interpolate import interp2d, InterpolatedUnivariateSpline, RectBivariateSpline
 import os
 
 
@@ -25,9 +25,9 @@ def setNewEdges(edges):
 
 # ------------------------------- Settings ---------------------------- #
 
-nugen_path = '/data/user/tglauch/EHE/processed/combined.npy'
+nugen_path = 'combined.npy' #/data/user/tglauch/EHE/processed/combined.npy'
 #LCC_path = "/home/annaf/BlazarNeutrino/data/myCat.fits"
-LCC_path = "/home/annaf/BlazarNeutrino/data/myCat2747.fits"
+LCC_path = 'myCat2747.fits'#"/home/annaf/BlazarNeutrino/data/myCat2747.fits"
 
 settings = {'E_reco': 'NPE',
             'zen_reco': 'mpe_zen',
@@ -93,27 +93,34 @@ def create_splines(f):
 
     # energy ratio 2D spline
     print('Create Energy Spline..check yourself whether it is ok')
-    for flux in settings['ftypes']:
-        x = np.cos(f['mpe_zen'][~mask])
-        y = np.log10(f['NPE'][~mask])
-        H, xedges, yedges = np.histogram2d(x, y,
-                                           weights=f[flux][~mask],
-                                           bins=(30, 30), normed=True)
-        H = np.ma.masked_array(norm_hist(H).T)
-        H.mask = (H <= 0)
-        Hs[flux] = H
+    zenith_bins=list(np.linspace(-1.,0.,15, endpoint=False)) + list(np.linspace(0.,1.,20))
+    tot_weight = np.sum([f[flux][~mask] for flux in settings['ftypes']], axis=0)
+    x = np.cos(f['mpe_zen'][~mask])
+    y = np.log10(f['NPE'][~mask])
+    H_tot, xedges, yedges = np.histogram2d(x, y,
+                                       weights=tot_weight,
+                                       bins=(zenith_bins,25), normed=True)
 
-    spline = interp2d(setNewEdges(xedges),
-                      setNewEdges(yedges),
-                      np.log10(Hs['astro'] / (Hs['atmo'] + Hs['prompt'])))
+    H_tot = np.ma.masked_array(norm_hist(H_tot))
+    H_tot.mask = (H_tot <= 0)
+
+    H_astro, xedges, yedges = np.histogram2d(x, y,
+                                       weights=f['astro'][~mask],
+                                       bins=(zenith_bins,25), normed=True)
+    H_astro = np.ma.masked_array(norm_hist(H_astro))
+    H_astro.mask = (H_astro <= 0)
+
+    spline = RectBivariateSpline(setNewEdges(xedges),
+                                 setNewEdges(yedges),
+                                 H_astro/H_tot ,
+                                 kx=1, ky=1, s=1)
     np.save('E_spline.npy', spline)
-    print(10**(spline(np.linspace(-1,1,20), 6.0)))
+    print(spline(-0.1, np.linspace(3.6,6.5,20)))
 
     # zenith dist 1D spline
     print('Create Zenith Spline...Check if ok..')
-    tot_rate = f['atmo'][~mask] + f['prompt'][~mask]
     vals, edges = np.histogram(np.cos(f['mpe_zen'][~mask]),
-                               weights=tot_rate,
+                               weights=tot_weight,
                                bins=30, density=True)
     zen_spl = InterpolatedUnivariateSpline(setNewEdges(edges),
                                            np.log10(vals), k=3)
@@ -269,7 +276,7 @@ def simulate(f, timeBins, filename, tbdata, binNorms, NSim=1000):
 
     sim = dict()
     sim['en'] = np.array(enSim)
-    sim['ra'] = np.array(raSim)
+    sim['ra'] =  np.random.uniform(0., 2*np.pi, len(enSim)) #np.array(raSim)
     sim['dec'] = np.array(zenSim) - 0.5 * np.pi
     sim['sigma'] = np.array(crSim)
 
