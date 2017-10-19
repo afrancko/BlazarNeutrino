@@ -25,9 +25,9 @@ def setNewEdges(edges):
 
 # ------------------------------- Settings ---------------------------- #
 
-nugen_path = 'combined.npy' #/data/user/tglauch/EHE/processed/combined.npy'
+nugen_path = '/data/user/tglauch/EHE/processed/combined.npy'
 #LCC_path = "/home/annaf/BlazarNeutrino/data/myCat.fits"
-LCC_path = 'myCat2747.fits'#"/home/annaf/BlazarNeutrino/data/myCat2747.fits"
+LCC_path = "/home/annaf/BlazarNeutrino/data/myCat2747.fits"
 
 settings = {'E_reco': 'NPE',
             'zen_reco': 'mpe_zen',
@@ -35,7 +35,7 @@ settings = {'E_reco': 'NPE',
             'sigma': 'cr',
             'gamma': 2.1,
             'ftypes': ['astro', 'atmo', 'prompt'],  # atmo = conv..sry for that
-            'Nsim': 100000,
+            'Nsim': 10000,
             'Phi0': 0.91}
 
 dtype = [("en", np.float64),
@@ -74,12 +74,16 @@ dtype = [("en", np.float64),
 
 
 def getNormInBin(tbdata):
-    binNorms = np.zeros_like(tbdata[0]['EFlux_History'])
-    for ti in range(len(binNorms)):
-       for si in range(len(tbdata)):
-          if tbdata[si]['TS'][ti]>4:# and tbdata[si]['npred'][ti]>3:
-             binNorms[ti]+=tbdata[si]['EFlux_History'][ti]
-    np.save('data/binNorms.npy',binNorms)
+    outfile = LCC_path.replace('.fits','_binNorms.npy')
+    if os.path.exists(outfile):
+       binNorms = np.load(outfile)
+    else:
+       binNorms = np.zeros_like(tbdata[0]['EFlux_History'])
+       for ti in range(len(binNorms)):
+          for si in range(len(tbdata)):
+             if tbdata[si]['TS'][ti]>4:# and tbdata[si]['npred'][ti]>3:
+                binNorms[ti]+=tbdata[si]['EFlux_History'][ti]
+       np.save(outfile,binNorms)
     return binNorms
 
 def norm_hist(h):
@@ -195,21 +199,25 @@ def get_sources(ra, dec, sigma, neuTime, tbdata, timeBins, binNorms):
         return None
         
     fluxHist = foundSources['EFlux_History']
+    fluxHistErr = foundSources['Unc_EFlux_History']
     ts = foundSources['TS']
     tbin = getTBin(neuTime, timeBins)
     fluxNeuTime = [f[tbin] for f in fluxHist]
+    fluxNeuTimeError = [f[tbin] for f in fluxHistErr]
     tsNeuTime = [f[tbin] for f in ts]
     fluxNeuTime = np.asarray(fluxNeuTime)
+    fluxNeuTimeError = np.asarray(fluxNeuTimeError)
     tsNeuTime = np.asarray(tsNeuTime)
-    tsMask = tsNeuTime > 4
+    tsMask = tsNeuTime > 25
     tsMask = np.asarray(tsMask)
     fluxNeuTime = fluxNeuTime[tsMask]
+    fluxNeuTimeError = fluxNeuTimeError[tsMask]
     foundSources = foundSources[tsMask]
     if (foundSources) == 0:
        return None
 
     retval = np.deg2rad(foundSources['RAJ2000']), \
-        np.deg2rad(foundSources['DEJ2000']), fluxNeuTime/binNorms[tbin]
+        np.deg2rad(foundSources['DEJ2000']), fluxNeuTime, binNorms[tbin], fluxNeuTimeError
     if not len(foundSources) == 0:
         print "found %i sources close by" % len(foundSources)
         print "flux weight", fluxNeuTime/binNorms[tbin]
@@ -226,17 +234,17 @@ def likelihood(sim, tbdata, timeBins, binNorms):
 
     foundSources = get_sources(ra, dec, sigma, neuTime, tbdata, timeBins, binNorms)
     if foundSources is None:
-        return 0, -99, -99
+        return -99, -99, -99
     if len(foundSources[0]) == 0:
-        return 0, -99, -99
+        return -99, -99, -99
 
-    raS, decS, fluxS = foundSources
+    raS, decS, fluxS, fluxError, fluxNorm = foundSources
 
     fluxS = np.asarray(fluxS)
     mask = fluxS < 1e-12
     fluxS[mask] = 1e-12
 
-    sourceTerm = fluxS * np.exp(-GreatCircleDistance(ra, dec, raS, decS)**2 / (2. * sigma**2))
+    sourceTerm = fluxS/fluxNorm * np.exp(-GreatCircleDistance(ra, dec, raS, decS)**2 / (2. * sigma**2))
 
     coszen = np.cos(dec + 0.5 * np.pi)
     E_ratio = np.log(10 ** E_spline(coszen, np.log10(en))[0])
@@ -245,9 +253,14 @@ def likelihood(sim, tbdata, timeBins, binNorms):
            sigma: {} time : {}'.format(en, ra, coszen,
                                        sigma, neuTime,))
 
-    llh = -2 * np.log(sigma) + np.log(np.sum(sourceTerm)) + E_ratio - coszen_prob
-    if llh<0:
-       llh = 0
+    # account for flux error
+    fluxMax = fluxS*0.5 + np.sqrt((fluxS*0.5)**2 + 0.5*fluxError**2)
+    gaussFluxMax = np.exp(-(fluxMax-fluxS)**2/fluxError**2)
+    nuisanceTerm = np.log(gaussFluxMax)
+
+    llh = -2 * np.log(sigma) + np.log(np.sum(sourceTerm)) + E_ratio - coszen_prob + np.sum(nuisanceTerm)
+    #if llh<0:
+    #   llh = 0
     print('Likelihood: {} \n'.format(llh))
     print '----'
     print (2 * llh), E_ratio, coszen_prob
@@ -312,7 +325,7 @@ def simulate(f, timeBins, filename, tbdata, binNorms, NSim=1000):
 
 def plotLLH(llhfile, outfile, tbdata,timeBins,binNorms):
     llh = np.load(llhfile)
-    bins = np.linspace(-1, 25, 50)
+    bins = np.linspace(-100, 25, 100)
     fig, ax = newfig(0.9)
     X2 = np.sort(llh)
     F2 = np.ones(len(llh)) - np.array(range(len(llh))) / float(len(llh))
@@ -320,7 +333,7 @@ def plotLLH(llhfile, outfile, tbdata,timeBins,binNorms):
     ax.set_xlabel(r'$LLH Ratio$')
     ax.set_ylabel('Prob')
     ax.set_yscale('log')
-    ax.set_xlim(-1)
+    ax.set_xlim(-100)
     print('Eval Event')
     llhNu, enNu, coszNu = likelihood(EHE_event, tbdata, timeBins,binNorms)
     #plt.axvline(llhNu)
