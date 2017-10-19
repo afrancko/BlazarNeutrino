@@ -25,9 +25,9 @@ def setNewEdges(edges):
 
 # ------------------------------- Settings ---------------------------- #
 
-nugen_path = '/data/user/tglauch/EHE/processed/combined.npy'
+nugen_path = 'combined.npy' #/data/user/tglauch/EHE/processed/combined.npy'
 #LCC_path = "/home/annaf/BlazarNeutrino/data/myCat.fits"
-LCC_path = "/home/annaf/BlazarNeutrino/data/myCat2747.fits"
+LCC_path =  'myCat2747.fits' #"/home/annaf/BlazarNeutrino/data/myCat2747.fits"
 
 settings = {'E_reco': 'NPE',
             'zen_reco': 'mpe_zen',
@@ -35,7 +35,7 @@ settings = {'E_reco': 'NPE',
             'sigma': 'cr',
             'gamma': 2.1,
             'ftypes': ['astro', 'atmo', 'prompt'],  # atmo = conv..sry for that
-            'Nsim': 10000,
+            'Nsim': 100000,
             'Phi0': 0.91}
 
 dtype = [("en", np.float64),
@@ -213,18 +213,18 @@ def get_sources(ra, dec, sigma, neuTime, tbdata, timeBins, binNorms):
     fluxNeuTime = fluxNeuTime[tsMask]
     fluxNeuTimeError = fluxNeuTimeError[tsMask]
     foundSources = foundSources[tsMask]
-    if (foundSources) == 0:
+    if (len(foundSources)) == 0:
        return None
 
     retval = np.deg2rad(foundSources['RAJ2000']), \
         np.deg2rad(foundSources['DEJ2000']), fluxNeuTime, binNorms[tbin], fluxNeuTimeError
     if not len(foundSources) == 0:
         print "found %i sources close by" % len(foundSources)
-        print "flux weight", fluxNeuTime/binNorms[tbin]
-        print "ts ", tsNeuTime
+        # print "flux weight", fluxNeuTime/binNorms[tbin]
+        # print "ts ", tsNeuTime
     return retval
 
-def likelihood(sim, tbdata, timeBins, binNorms):
+def likelihood(sim, tbdata, timeBins, binNorms, distortion=False, E_weights=True):
 
     en = sim['en']
     ra = sim['ra']
@@ -246,28 +246,52 @@ def likelihood(sim, tbdata, timeBins, binNorms):
 
     sourceTerm = fluxS/fluxNorm * np.exp(-GreatCircleDistance(ra, dec, raS, decS)**2 / (2. * sigma**2))
 
-    coszen = np.cos(dec + 0.5 * np.pi)
-    E_ratio = np.log(10 ** E_spline(coszen, np.log10(en))[0])
-    coszen_prob = np.log(10 ** (coszen_spline(coszen)) / (2 * np.pi))
-    print('E: {} ra: {} coszen: {} \n \
-           sigma: {} time : {}'.format(en, ra, coszen,
-                                       sigma, neuTime,))
+    if not distortion:
+        coszen = np.cos(dec + 0.5 * np.pi)
+        E_ratio = np.log(10 ** E_spline(coszen, np.log10(en))[0])
+        coszen_prob = np.log(10 ** (coszen_spline(coszen)) / (2 * np.pi))
+    else:
+        coszen_prob = np.random.uniform(0,5)
+        E_ratio = np.random.uniform(0,5)
+    # print('E: {} ra: {} coszen: {} \n \
+    #        sigma: {} time : {}'.format(en, ra, coszen,
+    #                                    sigma, neuTime,))
 
     # account for flux error
     fluxMax = fluxS*0.5 + np.sqrt((fluxS*0.5)**2 + 0.5*fluxError**2)
-    gaussFluxMax = np.exp(-(fluxMax-fluxS)**2/fluxError**2)
+    gaussFluxMax = np.exp(-(fluxMax-fluxS)**2 / fluxError**2)
     nuisanceTerm = np.log(gaussFluxMax)
 
-    llh = -2 * np.log(sigma) + np.log(np.sum(sourceTerm)) + E_ratio - coszen_prob + np.sum(nuisanceTerm)
+    if E_weights:
+        llh = -2 * np.log(sigma) + np.log(np.sum(sourceTerm)) + E_ratio - coszen_prob + np.sum(nuisanceTerm)
+    else:
+        llh = -2 * np.log(sigma) + np.log(np.sum(sourceTerm)) - coszen_prob + np.sum(nuisanceTerm)
     #if llh<0:
     #   llh = 0
-    print('Likelihood: {} \n'.format(llh))
+    # print('Likelihood: {} \n'.format(llh))
     print '----'
-    print (2 * llh), E_ratio, coszen_prob
+    # print (2 * llh), E_ratio, coszen_prob
     return (2 * llh), E_ratio, coszen_prob
 
 
-def simulate(f, timeBins, filename, tbdata, binNorms, NSim=1000):
+# def inject_pointsource(f, Nsim=1000)
+#     zen_mask
+
+
+def calc_p_value(TS_dist, llh_vals, name='' ,save=True):
+    if not isinstance(llh_vals, float):
+        pvals = []
+        for val in llh_vals:
+            pval = float(len(np.where(TS_dist > val)[0])) / float(len(TS_dist))
+            pvals.append(pval)
+        if save:
+            np.save('./data/pvals_{}.npy'.format(name), np.array(pvals))
+    else:
+        pval = float(len(np.where(TS_dist > llh_vals)[0])) / float(len(TS_dist))
+        return pval
+    return
+
+def simulate(f, timeBins, tbdata, binNorms, NSim=1000, filename='', distortion=False, E_weights=True):
 # zen, azi, recoE, cr, AtmWeight,
 
     enSim = []
@@ -289,7 +313,7 @@ def simulate(f, timeBins, filename, tbdata, binNorms, NSim=1000):
 
     sim = dict()
     sim['en'] = np.array(enSim)
-    sim['ra'] =  np.random.uniform(0., 2*np.pi, len(enSim)) #np.array(raSim)
+    sim['ra'] =  np.random.uniform(0., 2 * np.pi, len(enSim))  #np.array(raSim)
     sim['dec'] = np.array(zenSim) - 0.5 * np.pi
     sim['sigma'] = np.array(crSim)
 
@@ -306,10 +330,14 @@ def simulate(f, timeBins, filename, tbdata, binNorms, NSim=1000):
     llh = []
     e_rat = []
     cosz_prob = []
+    print_after = round(NSim/10)
+    if distortion:
+        print('Be careful you are running script with distortion set to TRUE!!!')
     for i in range(len(sim)):
-        # if i % 1 == 0:
+        if i % print_after == 0:
+            print('{}/{}'.format(i, NSim))
         #     print i, sim[i]['en'], sim[i]['ra'], sim[i]['dec'], sim[i]['sigma'], sim[i]['neuTime']
-        l, er, cosz = likelihood(sim[i], tbdata, timeBins,binNorms)
+        l, er, cosz = likelihood(sim[i], tbdata, timeBins, binNorms, distortion=distortion, E_weights=E_weights)
         llh.append(l)
         e_rat.append(er)
         cosz_prob.append(cosz)
@@ -317,13 +345,15 @@ def simulate(f, timeBins, filename, tbdata, binNorms, NSim=1000):
     llh = np.asarray(llh)
     e_rat = np.asarray(e_rat)
     cosz_prob = np.asarray(cosz_prob)
+    if not filename == '':
+        np.save(filename, llh)
+        np.save(filename.replace('llh', 'ERatio'), e_rat)
+        np.save(filename.replace('llh', 'CosZProb'), cosz_prob)
+    return llh
 
-    np.save(filename, llh)
-    np.save(filename.replace('llh','ERatio'), e_rat)
-    np.save(filename.replace('llh','CosZProb'), cosz_prob)
 
-
-def plotLLH(llhfile, outfile, tbdata,timeBins,binNorms):
+def plotLLH(llhfile, tbdata, timeBins, binNorms):
+    outfile = llhfile.replace('output', 'plots').replace('npy', 'png')
     llh = np.load(llhfile)
     bins = np.linspace(-100, 25, 100)
     fig, ax = newfig(0.9)
@@ -335,22 +365,23 @@ def plotLLH(llhfile, outfile, tbdata,timeBins,binNorms):
     ax.set_yscale('log')
     ax.set_xlim(-100)
     print('Eval Event')
-    llhNu, enNu, coszNu = likelihood(EHE_event, tbdata, timeBins,binNorms)
+    llhNu, enNu, coszNu = likelihood(EHE_event, tbdata, timeBins, binNorms)
     #plt.axvline(llhNu)
     plt.grid()
     plt.savefig(outfile)
 
     plt.figure()
-    eratio = np.load(llhfile.replace('llh','ERatio'))
-    plt.hist(eratio[eratio>-90],bins=50)
+    eratio = np.load(llhfile.replace('llh', 'ERatio'))
+    plt.hist(eratio[eratio > -90], bins=50)
     plt.axvline(enNu)
-    plt.savefig(outfile.replace('llh','ERatio'))
+    plt.savefig(outfile.replace('llh', 'ERatio'))
 
     plt.figure()
-    coszp = np.load(llhfile.replace('llh','CosZProb'))
-    plt.hist(coszp[coszp>-90],bins=50)
+    coszp = np.load(llhfile.replace('llh', 'CosZProb'))
+    plt.hist(coszp[coszp > -90], bins=50)
     plt.axvline(coszNu)
-    plt.savefig(outfile.replace('llh','CosZProb'))
+    plt.savefig(outfile.replace('llh', 'CosZProb'))
+    return llhNu
 
     #plt.show()
 
@@ -379,11 +410,24 @@ if __name__ == '__main__':
     binNorms = getNormInBin(tbdata)
 
     print('Generating PDFs..Finished')
+    addinfo = 'wo_E_weights'
 
-    filename = 'output/llh_%i_%.1f_%i.npy' % (settings['Nsim'],
+    filename = './output/{}_llh_{}_{:.2f}_{}.npy'.format(addinfo, settings['Nsim'],
                                               settings['gamma'],
                                               jobN)
-    simulate(f, timeBins, filename, tbdata, binNorms, settings['Nsim'])
+    print('##############Create BG TS Distrbution##############')
+    if not os.path.exists(filename):
+        llh_bg_dist= simulate(f, timeBins, tbdata,
+                              binNorms, settings['Nsim'], filename=filename, E_weights=False)
+    else:
+        llh_bg_dist = np.load(filename)
 
-    plotLLH(filename,
-            filename.replace('output', 'plots').replace('npy', 'png'), tbdata, timeBins, binNorms)
+    print('##############Generate Background Trials##############')
+    llh_trials = simulate(f, timeBins, tbdata,
+                          binNorms, settings['Nsim'], E_weights=False)
+
+    print('calculate p-values')
+    calc_p_value(llh_bg_dist, llh_trials, name=addinfo)
+
+    exp_llh = plotLLH(filename, tbdata, timeBins, binNorms)
+    print('Exp P-Val {}'.format(calc_p_value(llh_bg_dist, exp_llh[0], save=False)))
