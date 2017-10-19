@@ -44,6 +44,8 @@ dtype = [("en", np.float64),
          ("sigma", np.float64),
          ("neuTime", np.float64)]
 
+addinfo = 'wo_E_weights'
+
 # IC170911
 # NPE: 5784.9552
 # MuEX: 120000 GeV
@@ -410,7 +412,6 @@ if __name__ == '__main__':
     binNorms = getNormInBin(tbdata)
 
     print('Generating PDFs..Finished')
-    addinfo = 'wo_E_weights'
 
     filename = './output/{}_llh_{}_{:.2f}_{}.npy'.format(addinfo, settings['Nsim'],
                                               settings['gamma'],
