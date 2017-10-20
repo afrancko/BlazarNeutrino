@@ -1,9 +1,12 @@
 import numpy as np
+from scipy.interpolate import interp2d, InterpolatedUnivariateSpline, RectBivariateSpline
 
 
-@np.vectorize
-def powerlaw(trueE, ow):
-    return ow * settings['Phi0'] * 1e-18 * (trueE * 1e-5) ** (- settings['gamma'])
+def delta_psi(theta1,phi1, theta2, phi2):
+    sp = np.sin(theta1)*np.cos(phi1)*np.sin(theta2)*np.cos(phi2) \
+         + np.sin(theta1)*np.sin(phi1)*np.sin(theta2)*np.sin(phi2) \
+         +np.cos(theta1)*np.cos(theta2)
+    return np.arccos(sp)
 
 
 def rotate(ra1, dec1, ra2, dec2, ra3, dec3):
@@ -59,48 +62,58 @@ def rotate(ra1, dec1, ra2, dec2, ra3, dec3):
     return ra, dec
 
 
+def setNewEdges(edges):
+    newEdges = []
+    for i in range(0, len(edges) - 1):
+        newVal = (edges[i] + edges[i + 1]) * 1.0 / 2
+        newEdges.append(newVal)
+    return np.array(newEdges)
+
 def norm_hist(h):
     h = np.array([i / np.sum(i) if np.sum(i) > 0 else i / 1. for i in h])
     return h
 
 
-def create_splines(f):
+def create_splines(f, ftypes, zen_reco, az_reco, en_reco):
     Hs = dict()
-    mask = np.isnan(f['mpe_zen'])
+    mask = np.isfinite(f[zen_reco])
 
+    delta_mask = np.degrees(delta_psi(f['zenith'], f['azimuth'], f[zen_reco], f[az_reco]))<5
     # energy ratio 2D spline
     print('Create Energy Spline..check yourself whether it is ok')
-    zenith_bins=list(np.linspace(-1.,0.,15, endpoint=False)) + list(np.linspace(0.,1.,20))
-    tot_weight = np.sum([f[flux][~mask] for flux in settings['ftypes']], axis=0)
-    x = np.cos(f['mpe_zen'][~mask])
-    y = np.log10(f['NPE'][~mask])
+    zenith_bins=list(np.linspace(-1.,0.,6, endpoint=False)) + list(np.linspace(0.,1.,10))
+    tot_weight = np.sum([f[flux][mask & delta_mask] for flux in ftypes], axis=0)
+    x = np.cos(f[zen_reco][mask & delta_mask])
+    y = np.log10(f[en_reco][mask & delta_mask])
     H_tot, xedges, yedges = np.histogram2d(x, y,
                                        weights=tot_weight,
-                                       bins=(zenith_bins,25), normed=True)
+                                       bins=(20,np.linspace(3.5, 11, 30)), normed=True)
 
     H_tot = np.ma.masked_array(norm_hist(H_tot))
     H_tot.mask = (H_tot <= 0)
 
     H_astro, xedges, yedges = np.histogram2d(x, y,
-                                       weights=f['astro'][~mask],
-                                       bins=(zenith_bins,25), normed=True)
+                                       weights=f['astro'][mask & delta_mask],
+                                       bins=(20, np.linspace(3.5, 11, 30)),
+                                       normed=True)
+    print yedges
     H_astro = np.ma.masked_array(norm_hist(H_astro))
     H_astro.mask = (H_astro <= 0)
 
     spline = RectBivariateSpline(setNewEdges(xedges),
                                  setNewEdges(yedges),
-                                 H_astro/H_tot ,
-                                 kx=1, ky=1, s=1)
+                                 H_astro/H_tot,
+                                 kx=1, ky=1, s=0)
     np.save('E_spline.npy', spline)
     print(spline(-0.1, np.linspace(3.6,6.5,20)))
 
     # zenith dist 1D spline
     print('Create Zenith Spline...Check if ok..')
-    vals, edges = np.histogram(np.cos(f['mpe_zen'][~mask]),
+    vals, edges = np.histogram(np.cos(f[zen_reco][mask & delta_mask]),
                                weights=tot_weight,
                                bins=30, density=True)
     zen_spl = InterpolatedUnivariateSpline(setNewEdges(edges),
-                                           vals, k=3)
+                                           np.log10(vals), k=3)
     print(10**zen_spl(setNewEdges(edges)))
     np.save('coszen_spl.npy', zen_spl)
 
