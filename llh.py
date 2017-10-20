@@ -36,7 +36,7 @@ settings = {'E_reco': 'muex',
             'sigma': 'cr',
             'gamma': 2.1,
             'ftypes': ['astro', 'atmo', 'prompt'],  # atmo = conv..sry for that
-            'Nsim': 100,
+            'Nsim': 1000,
             'Phi0': 0.91,
             'E_weights': True,
             'distortion': False}
@@ -142,7 +142,8 @@ def getTBin(testT, timeBins):
 
 
 def get_sources(ra, dec, sigma, nuTime, tbdata, timeBins, binNorms):
-    circ = sigma * 5.
+    # for testing set to 3
+    circ = sigma * 3. # 5.
     if circ > np.deg2rad(10):
         circ = np.deg2rad(10)
 
@@ -155,7 +156,10 @@ def get_sources(ra, dec, sigma, nuTime, tbdata, timeBins, binNorms):
     #    circ = circ+np.deg2rad(1)
     #    mask = dist < circ
     #    foundSources = tbdata[mask]
-        
+    
+    if (len(foundSources)) == 0:
+       return None
+    
     fluxHist = foundSources['eflux']
     fluxHistErr = foundSources['eflux_err']
 
@@ -169,7 +173,6 @@ def get_sources(ra, dec, sigma, nuTime, tbdata, timeBins, binNorms):
     foundSources = foundSources[tsMask]
 
     if (len(foundSources)) == 0:
-       print 'No source found. Return None'
        return None
 
     retval = np.deg2rad(foundSources['RAJ2000']), \
@@ -203,15 +206,11 @@ def likelihood(sim, tbdata, timeBins, binNorms, distortion=False, E_weights=True
 
     if not distortion:
         coszen = np.cos(utils.dec_to_zen(dec))
-        E_ratio = np.log(E_spline(coszen, np.log10(en))[0])
-        coszen_prob = np.log(10 ** coszen_spline(coszen) / (2 * np.pi))
-        print "Espline ", E_spline(coszen, np.log10(en))
-        print "type ", type(E_spline(coszen, np.log10(en)))
-        print "in if dist: type Eratio ", type(E_ratio)
+        E_ratio = np.log(E_spline(coszen, np.log10(en))[0][0])
+        coszen_prob = np.log(10 ** (coszen_spline(coszen)) / (2 * np.pi))
     else:
         coszen_prob = np.random.uniform(0,5)
         E_ratio = np.random.uniform(0,5)
-        print "in else: type Eratio ", type(E_ratio)
     # print('E: {} ra: {} coszen: {} \n \
     #        sigma: {} time : {}'.format(en, ra, coszen,
     #                                    sigma, nuTime,))
@@ -219,7 +218,6 @@ def likelihood(sim, tbdata, timeBins, binNorms, distortion=False, E_weights=True
     # account for flux error
     fluxMax = fluxS*0.5 + np.sqrt((fluxS * 0.5) ** 2 + 0.5* fluxError ** 2)
     nuisanceTerm = 1./np.sqrt(2.*np.pi*fluxError ** 2) * np.exp(-(fluxMax-fluxS)**2 /(2*fluxError**2))
-    print "nuisanceTerm ", nuisanceTerm
 
     sourceTerm = fluxMax/fluxNorm * np.exp(-GreatCircleDistance(ra, dec, raS, decS)**2 / (2. * sigma**2))
 
@@ -228,9 +226,6 @@ def likelihood(sim, tbdata, timeBins, binNorms, distortion=False, E_weights=True
     else:
         llh = -2 * np.log(sigma) + np.log(np.sum(sourceTerm*nuisanceTerm)) - coszen_prob #+ np.sum(nuisanceTerm)
 
-    print "type log(sigma) ", type(np.log(sigma))
-    print "type sum(source) ", type(np.sum(sourceTerm*nuisanceTerm))
-    print "type E_ratio ", type(E_ratio)
     #if llh<0:
     #   llh = 0
     # print('Likelihood: {} \n'.format(llh))
@@ -432,4 +427,4 @@ if __name__ == '__main__':
                                        gamma=settings['gamma'], Nsim=settings['Nsim'],distortion=settings['distortion'],E_weights=settings['E_weights'])
 
     exp_llh = plotLLH(filename, tbdata, timeBins, binNorms,distortion=settings['distortion'], E_weights=settings['E_weights'])
-    print('Exp P-Val {}'.format(calc_p_value(llh_bg_dist, exp_llh[0], save=False)))
+    print('Exp P-Val {}'.format(calc_p_value(llh_bg_dist, exp_llh, save=False)))
