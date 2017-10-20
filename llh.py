@@ -25,10 +25,10 @@ import utils
 
 # ------------------------------- Settings ---------------------------- #
 
-nugen_path = 'combined.npy' #/data/user/tglauch/EHE/processed/combined.npy'
+nugen_path = '/data/user/tglauch/EHE/processed/combined.npy'
 #LCC_path = "/home/annaf/BlazarNeutrino/data/myCat.fits"
-LCC_path =  'myCat2747.fits' #"/home/annaf/BlazarNeutrino/data/myCat2747.fits"
-#LCC_path =  "/home/annaf/BlazarNeutrino/data/sourceListAll2283_1GeV.fits"
+#LCC_path =  #'myCat2747.fits' #"/home/annaf/BlazarNeutrino/data/myCat2747.fits"
+LCC_path =  "/home/annaf/BlazarNeutrino/data/sourceListAll2283_1GeV.fits"
 
 settings = {'E_reco': 'muex',
             'zen_reco': 'mpe_zen',
@@ -393,7 +393,7 @@ if __name__ == '__main__':
     mask = np.isnan(f['cr'])
     f = f[~mask]
     # read light curve catalog
-    # tbdata, timeBins = readLCCat()
+    tbdata, timeBins = readLCCat()
     print('Read Cataloge...Finished')
     if not os.path.exists('coszen_spl.npy') or \
         not os.path.exists('E_spline.npy'):
