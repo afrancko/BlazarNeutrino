@@ -391,8 +391,9 @@ if __name__ == '__main__':
     f = rec_append_fields(f, 'astro',
                           astro,
                           dtypes=np.float64)
-    mask = np.isnan(f['cr'])
-    f = f[~mask]
+    delta_mask = np.degrees(utils.delta_psi(f['zenith'], f['azimuth'], f[settings['zen_reco']], f[settings['az_reco']]))<5
+    mask = np.isfinite(f['cr'])
+    f = f[mask&delta_mask]
     # read light curve catalog
     tbdata, timeBins = readLCCat()
     print('Read Cataloge...Finished')
