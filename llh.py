@@ -238,8 +238,9 @@ def likelihood(sim, tbdata, timeBins, binNorms, distortion=False, E_weights=True
     return (2 * llh)
 
 
-def inject_pointsource(f, raS, decS, nuTime, filename='', gamma=2.1, Nsim=1000, distortion=False, E_weights=True):
-    zen_mask = ((np.cos(f['zenith'])-decS)>-0.1) & ((np.cos(f['zenith'])-decS)<0.1)
+def inject_pointsource(f, raS, decS, timeBins, filename='', gamma=2.1, Nsim=1000, distortion=False, E_weights=True):
+    time = np.random.uniform(timeBins[0], timeBins[-1], Nsim)
+    zen_mask = ((f['zenith']-dec_to_zen(decS))>-np.radians(2)) & ((f['zenith']-dec_to_zen(decS))<np.radians(2))
     fSource = f[zen_mask]
     for i in range(len(fSource)):
         rotatedRa, rotatedDec = utils.rotate(fSource['azimuth'][i], zen_to_dec(fSource['zenith'][i]), raS, decS, 

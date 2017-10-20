@@ -100,7 +100,7 @@ def create_splines(f):
                                weights=tot_weight,
                                bins=30, density=True)
     zen_spl = InterpolatedUnivariateSpline(setNewEdges(edges),
-                                           np.log10(vals), k=3)
+                                           vals, k=3)
     print(10**zen_spl(setNewEdges(edges)))
     np.save('coszen_spl.npy', zen_spl)
 
