@@ -1,9 +1,5 @@
 import numpy as np
-
-
-@np.vectorize
-def powerlaw(trueE, ow):
-    return ow * settings['Phi0'] * 1e-18 * (trueE * 1e-5) ** (- settings['gamma'])
+from scipy.interpolate import interp2d, InterpolatedUnivariateSpline, RectBivariateSpline
 
 
 def rotate(ra1, dec1, ra2, dec2, ra3, dec3):
@@ -59,19 +55,26 @@ def rotate(ra1, dec1, ra2, dec2, ra3, dec3):
     return ra, dec
 
 
+def setNewEdges(edges):
+    newEdges = []
+    for i in range(0, len(edges) - 1):
+        newVal = (edges[i] + edges[i + 1]) * 1.0 / 2
+        newEdges.append(newVal)
+    return np.array(newEdges)
+
 def norm_hist(h):
     h = np.array([i / np.sum(i) if np.sum(i) > 0 else i / 1. for i in h])
     return h
 
 
-def create_splines(f):
+def create_splines(f, ftypes):
     Hs = dict()
     mask = np.isnan(f['mpe_zen'])
 
     # energy ratio 2D spline
     print('Create Energy Spline..check yourself whether it is ok')
     zenith_bins=list(np.linspace(-1.,0.,15, endpoint=False)) + list(np.linspace(0.,1.,20))
-    tot_weight = np.sum([f[flux][~mask] for flux in settings['ftypes']], axis=0)
+    tot_weight = np.sum([f[flux][~mask] for flux in ftypes], axis=0)
     x = np.cos(f['mpe_zen'][~mask])
     y = np.log10(f['NPE'][~mask])
     H_tot, xedges, yedges = np.histogram2d(x, y,
