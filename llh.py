@@ -40,6 +40,7 @@ settings = {'E_reco': 'NPE',
             'Phi0': 0.91,
             'E_weights': True,
             'distortion': False}
+addinfo = 'with_E_weights_distored'
 
 dtype = [("en", np.float64),
          ("ra", np.float64),
@@ -47,7 +48,6 @@ dtype = [("en", np.float64),
          ("sigma", np.float64),
          ("nuTime", np.float64)]
 
-addinfo = 'with_E_weights_distored'
 
 # IC170911
 # NPE: 5784.9552
@@ -64,9 +64,6 @@ EHE_event = np.array((5784.9552,
 
 
 # --------------------------------------------------------------------------- #
-
-
-
 
 
 def getNormInBin(tbdata):
@@ -169,16 +166,11 @@ def get_sources(ra, dec, sigma, nuTime, tbdata, timeBins, binNorms):
     ts = foundSources['ts']
 
     tbin = getTBin(nuTime, timeBins)
-    fluxNuTime = [f[tbin] for f in fluxHist]
-    fluxNuTimeError = [f[tbin] for f in fluxHistErr]
-    tsNuTime = [f[tbin] for f in ts]
-    fluxNuTime = np.asarray(fluxNuTime)
-    fluxNuTimeError = np.asarray(fluxNuTimeError)
-    tsNuTime = np.asarray(tsNuTime)
+    tsNuTime = np.asarray([f[tbin] for f in ts])
     tsMask = tsNuTime > -25
     tsMask = np.asarray(tsMask)
-    fluxNuTime = fluxNuTime[tsMask]
-    fluxNuTimeError = fluxNuTimeError[tsMask]
+    fluxNuTime = np.asarray([f[tbin] for f in fluxHist])[tsMask]
+    fluxNuTimeError = np.asarray([f[tbin] for f in fluxHistErr])[tsMask]
     foundSources = foundSources[tsMask]
 
     if (len(foundSources)) == 0:
