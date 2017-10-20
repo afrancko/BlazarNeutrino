@@ -45,7 +45,7 @@ dtype = [("en", np.float64),
          ("sigma", np.float64),
          ("neuTime", np.float64)]
 
-addinfo = 'with_E_weights'
+addinfo = 'with_E_weights_distored'
 
 # IC170911
 # NPE: 5784.9552
@@ -194,8 +194,8 @@ def getTBin(testT, timeBins):
 # ra, dec in rad, neuTime in Fermi MET
 def get_sources(ra, dec, sigma, neuTime, tbdata, timeBins, binNorms):
     circ = sigma * 5.
-    #if circ > np.deg2rad(15):
-    #    circ = np.deg2rad(15)
+    if circ > np.deg2rad(10):
+        circ = np.deg2rad(10)
 
     dist = GreatCircleDistance(np.deg2rad(tbdata['RAJ2000']),
                                np.deg2rad(tbdata['DEJ2000']),
@@ -277,18 +277,18 @@ def likelihood(sim, tbdata, timeBins, binNorms, distortion=False, E_weights=True
     #                                    sigma, neuTime,))
 
     # account for flux error
-    #fluxMax = fluxS*0.5 + np.sqrt((fluxS*0.5)**2 + 0.5*fluxError**2)
-    #gaussFluxMax = 1./np.sqrt(2.*np.pi*fluxError**2)*np.exp(-(fluxMax-fluxS)**2 /(2*fluxError**2))
-    #nuisanceTerm = np.log(gaussFluxMax)
-    #print "gaussFluxMax ", gaussFluxMax
-    #print "nuisanceTerm ", nuisanceTerm
+    fluxMax = fluxS*0.5 + np.sqrt((fluxS*0.5)**2 + 0.5*fluxError**2)
+    gaussFluxMax = 1./np.sqrt(2.*np.pi*fluxError**2)*np.exp(-(fluxMax-fluxS)**2 /(2*fluxError**2))
+    nuisanceTerm = np.log(gaussFluxMax)
+    print "gaussFluxMax ", gaussFluxMax
+    print "nuisanceTerm ", nuisanceTerm
 
     sourceTerm = fluxS/fluxNorm * np.exp(-GreatCircleDistance(ra, dec, raS, decS)**2 / (2. * sigma**2))
 
     if E_weights:
-        llh = -2 * np.log(sigma) + np.log(np.sum(sourceTerm)) + E_ratio - coszen_prob #+ np.sum(nuisanceTerm)
+        llh = -2 * np.log(sigma) + np.log(np.sum(sourceTerm*nuisanceTerm)) + E_ratio - coszen_prob #+ np.sum(nuisanceTerm)
     else:
-        llh = -2 * np.log(sigma) + np.log(np.sum(sourceTerm)) - coszen_prob #+ np.sum(nuisanceTerm)
+        llh = -2 * np.log(sigma) + np.log(np.sum(sourceTerm*nuisanceTerm)) - coszen_prob #+ np.sum(nuisanceTerm)
     #if llh<0:
     #   llh = 0
     # print('Likelihood: {} \n'.format(llh))
@@ -481,7 +481,7 @@ if __name__ == '__main__':
 
     print('##############Generate Signal Trials##############')
     signal_trails = inject_pointsource(f, EHE_event['ra'], EHE_event['dec'], EHE_event['neuTime'], filename=filename.replace('.npy','_signal.npy'), 
-                                       gamma=settings['gamma'], Nsim=settings['Nsim'],distortion=True)
+                                       gamma=settings['gamma'], Nsim=settings['Nsim'],distortion=True,E_weights=True)
 
-    exp_llh = plotLLH(filename, tbdata, timeBins, binNorms,distortion=False, E_weights=True)
+    exp_llh = plotLLH(filename, tbdata, timeBins, binNorms,distortion=True, E_weights=True)
     print('Exp P-Val {}'.format(calc_p_value(llh_bg_dist, exp_llh[0], save=False)))
