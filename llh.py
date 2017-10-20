@@ -36,11 +36,11 @@ settings = {'E_reco': 'muex',
             'sigma': 'cr',
             'gamma': 2.1,
             'ftypes': ['astro', 'atmo', 'prompt'],  # atmo = conv..sry for that
-            'Nsim': 1000,
+            'Nsim': 10000,
             'Phi0': 0.91,
             'E_weights': True,
             'distortion': False}
-addinfo = 'with_E_weights_distored'
+addinfo = 'with_E_weights'
 
 dtype = [("en", np.float64),
          ("ra", np.float64),
@@ -167,10 +167,8 @@ def get_sources(ra, dec, sigma, nuTime, tbdata, timeBins, binNorms):
 
     tbin = getTBin(nuTime, timeBins)
     tsNuTime = np.asarray([f[tbin] for f in ts])
-    tsMask = np.asarray(tsMask)
-    fluxNuTime = np.asarray([f[tbin] for f in fluxHist])[tsMask]
-    fluxNuTimeError = np.asarray([f[tbin] for f in fluxHistErr])[tsMask]
-    foundSources = foundSources[tsMask]
+    fluxNuTime = np.asarray([f[tbin] for f in fluxHist])
+    fluxNuTimeError = np.asarray([f[tbin] for f in fluxHistErr])
 
     if (len(foundSources)) == 0:
        return None
@@ -231,13 +229,15 @@ def likelihood(sim, tbdata, timeBins, binNorms, distortion=False, E_weights=True
     # print('Likelihood: {} \n'.format(llh))
     print '----'
     #print (2 * llh)
-    print type(llh)
     return 2 * llh
 
 
 def inject_pointsource(f, raS, decS, nuTime, filename='', gamma=2.1, Nsim=1000, distortion=False, E_weights=True):
-    zen_mask = ((f['zenith']-dec_to_zen(decS))>-np.radians(2)) & ((f['zenith']-dec_to_zen(decS))<np.radians(2))
+    #zen_mask = ((f['zenith']-utils.dec_to_zen(decS))>-np.radians(5)) & ((f['zenith']-utils.dec_to_zen(decS))<np.radians(5))
+    zen_mask = np.abs(np.cos(f['zenith'])-np.cos(utils.dec_to_zen(decS)))<0.05
+
     fSource = f[zen_mask]
+    print "selected %i events in given zenith range"%len(fSource)
     for i in range(len(fSource)):
         rotatedRa, rotatedDec = utils.rotate(fSource['azimuth'][i],
                                              utils.zen_to_dec(fSource['zenith'][i]),
@@ -269,6 +269,12 @@ def inject_pointsource(f, raS, decS, nuTime, filename='', gamma=2.1, Nsim=1000, 
     sim['sigma'] = np.array(crSim)
     sim['nuTime'] = np.ones_like(sim['en'])*nuTime
 
+    #plt.figure()
+    #plt.plot(np.rad2deg(sim['ra']),np.rad2deg(sim['dec']),'ob')
+    #plt.plot([np.rad2deg(raS)],[np.rad2deg(decS)],'*r')
+    #plt.savefig('plots/simSky.png')
+    #exit()
+ 
     sim = np.array( zip(*[sim[ty[0]] for ty in dtype]), dtype=dtype)
 
     llh = []
@@ -283,7 +289,7 @@ def inject_pointsource(f, raS, decS, nuTime, filename='', gamma=2.1, Nsim=1000, 
 
     if not filename == '':
         np.save(filename, llh)
-
+    
     return llh
 
 
