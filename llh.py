@@ -38,9 +38,13 @@ settings = {'E_reco': 'muex',
             'ftypes': ['astro', 'atmo', 'prompt'],  # atmo = conv..sry for that
             'Nsim': 10000,
             'Phi0': 0.91,
-            'E_weights': True,
+            'TXS_ra': np.deg2rad(77.36061776),
+            'TXS_dec': np.deg2rad(5.69683419),
+            'E_weights': False,
             'distortion': False}
-addinfo = 'with_E_weights'
+#addinfo = 'with_E_weights_HE'
+addinfo = 'wo_E_weights'
+
 
 dtype = [("en", np.float64),
          ("ra", np.float64),
@@ -129,7 +133,7 @@ def readLCCat():
     #for i in range(len(hdulist[2].data['Hist_start'])):
     #    timeBins.append(hdulist[2].data['Hist_start'][i])
     timeBins = np.append(tbdata[0]['tmin_mjd'], tbdata[0]['tmax_mjd'][-1])
-    print timeBins
+    #print timeBins
     return tbdata, np.asarray(timeBins)
 
 
@@ -174,11 +178,13 @@ def get_sources(ra, dec, sigma, nuTime, tbdata, timeBins, binNorms):
        return None
 
     retval = np.deg2rad(foundSources['RAJ2000']), \
-        np.deg2rad(foundSources['DEJ2000']), fluxNuTime, binNorms[tbin], fluxNuTimeError
-    if not len(foundSources) == 0:
-        print "found %i sources close by" % len(foundSources)
-        # print "flux weight", fluxNuTime/binNorms[tbin]
-        # print "ts ", tsNuTime
+        np.deg2rad(foundSources['DEJ2000']), fluxNuTime, fluxNuTimeError, binNorms[tbin]
+    #if not len(foundSources) == 0:
+        #print "found %i sources close by" % len(foundSources)
+        #print "flux weight", fluxNuTime/binNorms[tbin]
+        #print "eflux, error, norm ", fluxNuTime, fluxNuTimeError, binNorms[tbin] 
+        #print "ts ", tsNuTime
+        #print foundSources['RAJ2000'], foundSources['DEJ2000'], dist[dist<circ]
     return retval
 
 
@@ -218,6 +224,7 @@ def likelihood(sim, tbdata, timeBins, binNorms, distortion=False, E_weights=True
     nuisanceTerm = 1./np.sqrt(2.*np.pi*fluxError ** 2) * np.exp(-(fluxMax-fluxS)**2 /(2*fluxError**2))
 
     sourceTerm = fluxMax/fluxNorm * np.exp(-GreatCircleDistance(ra, dec, raS, decS)**2 / (2. * sigma**2))
+    #sourceTerm = fluxS/fluxNorm * np.exp(-GreatCircleDistance(ra, dec, raS, decS)**2 / (2. * sigma**2))
 
     if E_weights:
         llh = -2 * np.log(sigma) + np.log(np.sum(sourceTerm*nuisanceTerm)) + E_ratio - coszen_prob #+ np.sum(nuisanceTerm)
@@ -227,7 +234,7 @@ def likelihood(sim, tbdata, timeBins, binNorms, distortion=False, E_weights=True
     #if llh<0:
     #   llh = 0
     # print('Likelihood: {} \n'.format(llh))
-    print '----'
+    #print '----'
     #print (2 * llh)
     return 2 * llh
 
@@ -235,8 +242,10 @@ def likelihood(sim, tbdata, timeBins, binNorms, distortion=False, E_weights=True
 def inject_pointsource(f, raS, decS, nuTime, filename='', gamma=2.1, Nsim=1000, distortion=False, E_weights=True):
     #zen_mask = ((f['zenith']-utils.dec_to_zen(decS))>-np.radians(5)) & ((f['zenith']-utils.dec_to_zen(decS))<np.radians(5))
     zen_mask = np.abs(np.cos(f['zenith'])-np.cos(utils.dec_to_zen(decS)))<0.05
+    #en_mask = np.log10(f['muex']) > 6
 
-    fSource = f[zen_mask]
+    fSource = f[zen_mask]# & en_mask]
+
     print "selected %i events in given zenith range"%len(fSource)
     for i in range(len(fSource)):
         rotatedRa, rotatedDec = utils.rotate(fSource['azimuth'][i],
@@ -430,7 +439,7 @@ if __name__ == '__main__':
     calc_p_value(llh_bg_dist, llh_trials, name=addinfo)
 
     print('##############Generate Signal Trials##############')
-    signal_trails = inject_pointsource(f, EHE_event['ra'], EHE_event['dec'], EHE_event['nuTime'], filename=filename.replace('.npy','_signal.npy'), 
+    signal_trails = inject_pointsource(f, settings['TXS_ra'], settings['TXS_dec'], EHE_event['nuTime'], filename=filename.replace('.npy','_signal.npy'), 
                                        gamma=settings['gamma'], Nsim=settings['Nsim'],distortion=settings['distortion'],E_weights=settings['E_weights'])
 
     exp_llh = plotLLH(filename, tbdata, timeBins, binNorms,distortion=settings['distortion'], E_weights=settings['E_weights'])
