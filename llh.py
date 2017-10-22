@@ -25,10 +25,10 @@ import utils
 
 # ------------------------------- Settings ---------------------------- #
 
-nugen_path = '/data/user/tglauch/EHE/processed/combined.npy'
+nugen_path = 'combined.npy' #/data/user/tglauch/EHE/processed/
 #LCC_path = "/home/annaf/BlazarNeutrino/data/myCat.fits"
 #LCC_path =  #'myCat2747.fits' #"/home/annaf/BlazarNeutrino/data/myCat2747.fits"
-LCC_path =  "/home/annaf/BlazarNeutrino/data/sourceListAll2283_1GeV.fits"
+LCC_path =  "sourceListAll2283_1GeV.fits" #/home/annaf/BlazarNeutrino/data/
 
 settings = {'E_reco': 'muex',
             'zen_reco': 'mpe_zen',
@@ -52,6 +52,12 @@ dtype = [("en", np.float64),
          ("sigma", np.float64),
          ("nuTime", np.float64)]
 
+
+# event = {'LF_zen' : 1.7015,
+#          'LF_az' : 5.82828,
+#          'mpe_zen' : 1.67165,
+#          'mpe_az' : 5.72487,
+#          'truncated_E' : 230990}
 
 # IC170911
 # NPE: 5784.9552
