@@ -1,6 +1,23 @@
 import numpy as np
 from scipy.interpolate import interp2d, InterpolatedUnivariateSpline, RectBivariateSpline
+import os
 
+def makeSourceFluxList(tbdata, LCC_path):
+    outfile = LCC_path.replace('.fits','_SourceList.npy')
+    if os.path.exists(outfile):
+       fluxList = np.load(outfile)
+    else:
+       tbins = len(np.zeros_like(tbdata[0]['eflux']))
+       fluxList = []
+       binCenterTime = tbdata[0]['tmin_mjd']+(tbdata[0]['tmax_mjd']-tbdata[0]['tmin_mjd'])*0.5 
+       for si in tbdata: # loop over sources
+          raj2000 = si['RAJ2000']
+          dej2000 = si['DEJ2000']
+          eflux = si['eflux']
+          eflux_err = si['eflux_err']
+          fluxList.extend([[raj2000, dej2000, binCenterTime[ti], eflux[ti], eflux_err[ti]] for ti in range(tbins)])
+       np.save(outfile,fluxList)
+    return fluxList
 
 def delta_psi(theta1,phi1, theta2, phi2):
     sp = np.sin(theta1)*np.cos(phi1)*np.sin(theta2)*np.cos(phi2) \
@@ -124,5 +141,5 @@ def zen_to_dec(zen):
 
 
 @np.vectorize
-def dec_to_zen(zen):
-    return zen - 0.5*np.pi
+def dec_to_zen(dec):
+    return dec + 0.5*np.pi

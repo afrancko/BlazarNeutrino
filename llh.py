@@ -40,10 +40,10 @@ settings = {'E_reco': 'muex',
             'Phi0': 0.91,
             'TXS_ra': np.deg2rad(77.36061776),
             'TXS_dec': np.deg2rad(5.69683419),
-            'E_weights': False,
+            'E_weights': True,
             'distortion': False}
 #addinfo = 'with_E_weights_HE'
-addinfo = 'wo_E_weights'
+addinfo = 'with_E_weights_increasing_radius'
 
 
 dtype = [("en", np.float64),
@@ -147,7 +147,7 @@ def getTBin(testT, timeBins):
 
 def get_sources(ra, dec, sigma, nuTime, tbdata, timeBins, binNorms):
     # for testing set to 3
-    circ = sigma * 3. # 5.
+    circ = sigma * 5.
     if circ > np.deg2rad(10):
         circ = np.deg2rad(10)
 
@@ -156,10 +156,10 @@ def get_sources(ra, dec, sigma, nuTime, tbdata, timeBins, binNorms):
                                ra, dec)
     mask = dist < circ
     foundSources = tbdata[mask]
-    #while len(foundSources) == 0:
-    #    circ = circ+np.deg2rad(1)
-    #    mask = dist < circ
-    #    foundSources = tbdata[mask]
+    while len(foundSources) == 0:
+        circ = circ+np.deg2rad(1)
+        mask = dist < circ
+        foundSources = tbdata[mask]
     
     if (len(foundSources)) == 0:
        return None
@@ -239,44 +239,78 @@ def likelihood(sim, tbdata, timeBins, binNorms, distortion=False, E_weights=True
     return 2 * llh
 
 
-def inject_pointsource(f, raS, decS, nuTime, filename='', gamma=2.1, Nsim=1000, distortion=False, E_weights=True):
-    #zen_mask = ((f['zenith']-utils.dec_to_zen(decS))>-np.radians(5)) & ((f['zenith']-utils.dec_to_zen(decS))<np.radians(5))
-    zen_mask = np.abs(np.cos(f['zenith'])-np.cos(utils.dec_to_zen(decS)))<0.05
-    #en_mask = np.log10(f['muex']) > 6
-
-    fSource = f[zen_mask]# & en_mask]
-
-    print "selected %i events in given zenith range"%len(fSource)
-    for i in range(len(fSource)):
-        rotatedRa, rotatedDec = utils.rotate(fSource['azimuth'][i],
-                                             utils.zen_to_dec(fSource['zenith'][i]),
-                                             raS, decS, 
-                                             fSource[settings['az_reco']][i],
-                                             utils.zen_to_dec(fSource[settings['zen_reco']][i]))
-        fSource[i][settings['az_reco']] = rotatedRa
-        fSource[i][settings['zen_reco']] = utils.dec_to_zen(rotatedDec)
-
-    weight = fSource['ow']/fSource['energy']**gamma
-    draw = np.random.choice(range(len(fSource)),
-                             Nsim,
-                             p=weight / np.sum(weight))
+def inject_pointsource(f, raS, decS, nuTime, filename='', gamma=2.1, Nsim=1000, distortion=False, E_weights=True, sourceList=None):
 
     enSim = []
     crSim = []
     zenSim = []
     raSim = []
+    timeSim = []
 
-    enSim.extend(fSource[draw][settings['E_reco']])
-    crSim.extend(fSource[draw][settings['sigma']])
-    zenSim.extend(fSource[draw][settings['zen_reco']])
-    raSim.extend(fSource[draw][settings['az_reco']])
+    if not raS is None:
+       zen_mask = np.abs(np.cos(f['zenith'])-np.cos(utils.dec_to_zen(decS)))<0.05
+       fSource = f[zen_mask]
+
+       print "selected %i events in given zenith range"%len(fSource)
+       for i in range(len(fSource)):
+           rotatedRa, rotatedDec = utils.rotate(fSource['azimuth'][i],
+                                                utils.zen_to_dec(fSource['zenith'][i]),
+                                                raS, decS, 
+                                                fSource[settings['az_reco']][i],
+                                                utils.zen_to_dec(fSource[settings['zen_reco']][i]))
+           fSource[i][settings['az_reco']] = rotatedRa
+           fSource[i][settings['zen_reco']] = utils.dec_to_zen(rotatedDec)
+
+       weight = fSource['ow']/fSource['energy']**gamma
+       draw = np.random.choice(range(len(fSource)),
+                                Nsim,
+                                p=weight / np.sum(weight))
+
+       enSim.extend(fSource[draw][settings['E_reco']])
+       crSim.extend(fSource[draw][settings['sigma']])
+       zenSim.extend(fSource[draw][settings['zen_reco']])
+       raSim.extend(fSource[draw][settings['az_reco']])
+       timeSim = np.ones_like(sim['en'])*nuTime
+
+    else:
+       print "sample from gamma-ray brightness distribution" 
+       weight = sourceList[:,3] # assign eflux as weight
+       draw = np.random.choice(range(len(sourceList)),
+                                Nsim,
+                                p=weight / np.sum(weight))
+       fSource = np.zeros_like(f[0:Nsim])
+       i = 0
+       for s in sourceList[draw]:
+          # select a neutrino and rotate to source direction
+          zen_mask = np.abs(np.cos(f['zenith'])-np.cos(utils.dec_to_zen(np.deg2rad(s[1]))))<0.05
+          fDist = f[zen_mask]
+          weight = fDist['ow']/fDist['energy']**gamma
+          # pick an event following signal weight distribution
+          rind = np.random.choice(range(len(fDist)),
+                                   1,
+                                   p=weight / np.sum(weight))
+          rotatedRa, rotatedDec = utils.rotate(fDist['azimuth'][rind],
+                                               utils.zen_to_dec(fDist['zenith'][rind]),
+                                               np.deg2rad(s[0]), np.deg2rad(s[1]),
+                                               fDist[settings['az_reco']][rind],
+                                               utils.zen_to_dec(fDist[settings['zen_reco']][rind]))
+          fDist[rind][settings['az_reco']] = rotatedRa
+          fDist[rind][settings['zen_reco']] = utils.dec_to_zen(rotatedDec)
+          fSource[i] = fDist[rind] 
+          timeSim.append(s[2])
+          i = i+1
+
+       enSim.extend(fSource[settings['E_reco']])
+       crSim.extend(fSource[settings['sigma']])
+       zenSim.extend(fSource[settings['zen_reco']])
+       raSim.extend(fSource[draw][settings['az_reco']])
 
     sim = dict()
     sim['en'] = np.array(enSim)
     sim['ra'] =  np.array(raSim)
     sim['dec'] = utils.zen_to_dec(np.array(zenSim))
     sim['sigma'] = np.array(crSim)
-    sim['nuTime'] = np.ones_like(sim['en'])*nuTime
+    sim['nuTime'] = np.array(timeSim)
 
     #plt.figure()
     #plt.plot(np.rad2deg(sim['ra']),np.rad2deg(sim['dec']),'ob')
@@ -430,17 +464,36 @@ if __name__ == '__main__':
     else:
         llh_bg_dist = np.load(filename)
 
-    print('##############Generate Background Trials##############')
-    llh_trials = simulate(f, timeBins, tbdata,
-                          binNorms, settings['Nsim'], E_weights=True)
+    #print('##############Generate Background Trials##############')
+    #llh_trials = simulate(f, timeBins, tbdata,
+    #                      binNorms, settings['Nsim'], E_weights=True)
 
-    print('calculate p-values')
-    print len(llh_bg_dist), len(llh_trials)
-    calc_p_value(llh_bg_dist, llh_trials, name=addinfo)
+    #print('calculate p-values')
+    #print len(llh_bg_dist), len(llh_trials)
+    #calc_p_value(llh_bg_dist, llh_trials, name=addinfo)
 
-    print('##############Generate Signal Trials##############')
-    signal_trails = inject_pointsource(f, settings['TXS_ra'], settings['TXS_dec'], EHE_event['nuTime'], filename=filename.replace('.npy','_signal.npy'), 
-                                       gamma=settings['gamma'], Nsim=settings['Nsim'],distortion=settings['distortion'],E_weights=settings['E_weights'])
+    #print('##############Generate Signal Trials, single source##############')
+    signal_gamma = 2.1
+    #signal_trials = inject_pointsource(f, settings['TXS_ra'], settings['TXS_dec'], EHE_event['nuTime'], 
+    #                                   filename=filename.replace('%.2f'%settings['gamma'],'%.2f'%signal_gamma).replace('.npy','_signal.npy'), 
+    #                                   gamma=signal_gamma, Nsim=settings['Nsim'],distortion=settings['distortion'],E_weights=settings['E_weights'],
+    #                                   sourceList=None)
+    #print('calculate p-values signal')
+    #print len(llh_bg_dist), len(signal_trials)
+    #calc_p_value(llh_bg_dist, signal_trials, name='%s_signal'%addinfo)
+
+
+    print('##############Generate Signal Trials from brightness distribution##############')
+    sourceList = utils.makeSourceFluxList(tbdata, LCC_path)
+    signal_trials = inject_pointsource(f, None, None, None,
+                                       filename=filename.replace('%.2f'%settings['gamma'],'%.2f'%signal_gamma).replace('.npy','_signal_sourceList.npy'),
+                                       gamma=signal_gamma, Nsim=settings['Nsim'],distortion=settings['distortion'],E_weights=settings['E_weights'],
+                                       sourceList=sourceList)
+
+
+    print('calculate p-values signal')
+    calc_p_value(llh_bg_dist, signal_trials, name='%s_signal_brightness'%addinfo)
+
 
     exp_llh = plotLLH(filename, tbdata, timeBins, binNorms,distortion=settings['distortion'], E_weights=settings['E_weights'])
     print('Exp P-Val {}'.format(calc_p_value(llh_bg_dist, exp_llh, save=False)))
