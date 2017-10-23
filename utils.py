@@ -2,7 +2,17 @@ import numpy as np
 from scipy.interpolate import interp2d, InterpolatedUnivariateSpline, RectBivariateSpline
 import os
 
+SLtype = [("RAJ2000", np.float64),
+          ("DEJ2000", np.float64),
+          ("binCenterMJD", np.float64),
+          ("eflux", np.float64),
+          ("eflux_err", np.float64),
+          ("ts", np.float64),
+          ("Source_Name",'U17')]
+
+
 def makeSourceFluxList(tbdata, LCC_path):
+    print "make source flux list"
     outfile = LCC_path.replace('.fits','_SourceList.npy')
     if os.path.exists(outfile):
        fluxList = np.load(outfile)
@@ -13,9 +23,11 @@ def makeSourceFluxList(tbdata, LCC_path):
        for si in tbdata: # loop over sources
           raj2000 = si['RAJ2000']
           dej2000 = si['DEJ2000']
+          sourcen = si['Source_Name']
           eflux = si['eflux']
           eflux_err = si['eflux_err']
-          fluxList.extend([[raj2000, dej2000, binCenterTime[ti], eflux[ti], eflux_err[ti]] for ti in range(tbins)])
+          ts = si['ts']
+          fluxList.extend([np.array((raj2000, dej2000, binCenterTime[ti], eflux[ti], eflux_err[ti], ts[ti], sourcen),dtype=SLtype) for ti in range(tbins)])
        np.save(outfile,fluxList)
     return fluxList
 

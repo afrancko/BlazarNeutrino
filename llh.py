@@ -25,10 +25,11 @@ import utils
 
 # ------------------------------- Settings ---------------------------- #
 
-nugen_path = 'combined.npy' #/data/user/tglauch/EHE/processed/
+nugen_path = '/data/user/tglauch/EHE/processed/combined.npy'
 #LCC_path = "/home/annaf/BlazarNeutrino/data/myCat.fits"
 #LCC_path =  #'myCat2747.fits' #"/home/annaf/BlazarNeutrino/data/myCat2747.fits"
-LCC_path =  "sourceListAll2283_1GeV.fits" #/home/annaf/BlazarNeutrino/data/
+#LCC_path =  "sourceListAll2283_1GeV.fits" #/home/annaf/BlazarNeutrino/data/
+LCC_path = "/home/annaf/BlazarNeutrino/data/sourceListAll2283_1GeV.fits"
 
 settings = {'E_reco': 'muex',
             'zen_reco': 'mpe_zen',
@@ -36,7 +37,7 @@ settings = {'E_reco': 'muex',
             'sigma': 'cr',
             'gamma': 2.1,
             'ftypes': ['astro', 'atmo', 'prompt'],  # atmo = conv..sry for that
-            'Nsim': 10000,
+            'Nsim': 50000,
             'Phi0': 0.91,
             'TXS_ra': np.deg2rad(77.36061776),
             'TXS_dec': np.deg2rad(5.69683419),
@@ -280,7 +281,8 @@ def inject_pointsource(f, raS, decS, nuTime, filename='', gamma=2.1, Nsim=1000, 
 
     else:
        print "sample from gamma-ray brightness distribution" 
-       weight = sourceList[:,3] # assign eflux as weight
+       weight = sourceList['eflux'] # assign eflux as weight
+       # draw from list of monthly bins, weighted with eflux
        draw = np.random.choice(range(len(sourceList)),
                                 Nsim,
                                 p=weight / np.sum(weight))
@@ -288,7 +290,7 @@ def inject_pointsource(f, raS, decS, nuTime, filename='', gamma=2.1, Nsim=1000, 
        i = 0
        for s in sourceList[draw]:
           # select a neutrino and rotate to source direction
-          zen_mask = np.abs(np.cos(f['zenith'])-np.cos(utils.dec_to_zen(np.deg2rad(s[1]))))<0.05
+          zen_mask = np.abs(np.cos(f['zenith'])-np.cos(utils.dec_to_zen(np.deg2rad(s['DEJ2000']))))<0.05
           fDist = f[zen_mask]
           weight = fDist['ow']/fDist['energy']**gamma
           # pick an event following signal weight distribution
@@ -297,13 +299,13 @@ def inject_pointsource(f, raS, decS, nuTime, filename='', gamma=2.1, Nsim=1000, 
                                    p=weight / np.sum(weight))
           rotatedRa, rotatedDec = utils.rotate(fDist['azimuth'][rind],
                                                utils.zen_to_dec(fDist['zenith'][rind]),
-                                               np.deg2rad(s[0]), np.deg2rad(s[1]),
+                                               np.deg2rad(s['RAJ2000']), np.deg2rad(s['DEJ2000']),
                                                fDist[settings['az_reco']][rind],
                                                utils.zen_to_dec(fDist[settings['zen_reco']][rind]))
           fDist[rind][settings['az_reco']] = rotatedRa
           fDist[rind][settings['zen_reco']] = utils.dec_to_zen(rotatedDec)
           fSource[i] = fDist[rind] 
-          timeSim.append(s[2])
+          timeSim.append(s['binCenterMJD'])
           i = i+1
 
        enSim.extend(fSource[settings['E_reco']])
