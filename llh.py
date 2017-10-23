@@ -26,6 +26,7 @@ import utils
 # ------------------------------- Settings ---------------------------- #
 
 nugen_path = '/data/user/tglauch/EHE/processed/combined.npy'
+muon_path = '/data/user/tglauch/EHE/processed/corsika_combined.npy'
 #LCC_path = "/home/annaf/BlazarNeutrino/data/myCat.fits"
 #LCC_path =  #'myCat2747.fits' #"/home/annaf/BlazarNeutrino/data/myCat2747.fits"
 #LCC_path =  "sourceListAll2283_1GeV.fits" #/home/annaf/BlazarNeutrino/data/
@@ -217,7 +218,7 @@ def likelihood(sim, tbdata, timeBins, binNorms, distortion=False, E_weights=True
 
     if not distortion:
         coszen = np.cos(utils.dec_to_zen(dec))
-        E_ratio = np.log(E_spline(coszen, np.log10(en))[0][0])
+        E_ratio = np.log(E_spline(coszen, np.log10(en)),grid=False)
         coszen_prob = np.log(10 ** (coszen_spline(coszen)) / (2 * np.pi))
     else:
         coszen_prob = np.random.uniform(0,5)
@@ -281,17 +282,50 @@ def inject_pointsource(f, raS, decS, nuTime, filename='', gamma=2.1, Nsim=1000, 
 
     else:
        print "sample from gamma-ray brightness distribution" 
-       weight = sourceList['eflux'] # assign eflux as weight
+       maskNan = np.isnan(sourceList['eflux'])
+       sourceList = sourceList[~maskNan]
+       coszen = utils.dec_to_zen(np.deg2rad(sourceList['DEJ2000']))
+       coszenWeight = (10 ** (coszen_spline(coszen)))
+       print coszenWeight[0:10], coszenWeight[120:130]
+       exit()
+       weight = sourceList['eflux']*coszenWeight # assign eflux as weight, weight with zen dist of neutrinos
        # draw from list of monthly bins, weighted with eflux
+       #print len(sourceList)
        draw = np.random.choice(range(len(sourceList)),
                                 Nsim,
                                 p=weight / np.sum(weight))
+       sourceList = sourceList[draw]
+       print len(sourceList)
+       #print len(weight[np.isnan(weight)])
+       #print len(weight[np.isinf(weight)])
        fSource = np.zeros_like(f[0:Nsim])
+       #print "len(fSource) ", len(fSource)
+       #print draw[0:20]
+       #print weight[draw][0:20]
+       #exit()
        i = 0
-       for s in sourceList[draw]:
+       for s in sourceList:
           # select a neutrino and rotate to source direction
           zen_mask = np.abs(np.cos(f['zenith'])-np.cos(utils.dec_to_zen(np.deg2rad(s['DEJ2000']))))<0.05
+          print "source dec ", s['DEJ2000']
+          coszen = utils.dec_to_zen(np.deg2rad(s['DEJ2000']))
+          print (coszen_spline(coszen))
+          print "zen weight:", (10 ** (coszen_spline(coszen)))
+          print "total weight ", s['eflux']*(10 ** (coszen_spline(coszen)))
           fDist = f[zen_mask]
+          print len(fDist)
+          if len(fDist)<50:
+              zen_mask = np.abs(np.cos(f['zenith'])-np.cos(utils.dec_to_zen(np.deg2rad(s['DEJ2000']))))<0.1
+              fDist = f[zen_mask]
+              print len(fDist)
+              if len(fDist)<10:
+                 zen_mask = np.abs(np.cos(f['zenith'])-np.cos(utils.dec_to_zen(np.deg2rad(s['DEJ2000']))))<0.15
+                 fDist = f[zen_mask]
+                 if len(fDist)<1:
+                    print "drop source. there are no MC events in that zen bin, %f"%s['DEJ2000']
+                    exit()
+                    continue
+  
           weight = fDist['ow']/fDist['energy']**gamma
           # pick an event following signal weight distribution
           rind = np.random.choice(range(len(fDist)),
@@ -304,6 +338,8 @@ def inject_pointsource(f, raS, decS, nuTime, filename='', gamma=2.1, Nsim=1000, 
                                                utils.zen_to_dec(fDist[settings['zen_reco']][rind]))
           fDist[rind][settings['az_reco']] = rotatedRa
           fDist[rind][settings['zen_reco']] = utils.dec_to_zen(rotatedDec)
+          print "i, rind ", i, rind
+          print "len(fDist) ", len(fDist)
           fSource[i] = fDist[rind] 
           timeSim.append(s['binCenterMJD'])
           i = i+1
@@ -311,7 +347,7 @@ def inject_pointsource(f, raS, decS, nuTime, filename='', gamma=2.1, Nsim=1000, 
        enSim.extend(fSource[settings['E_reco']])
        crSim.extend(fSource[settings['sigma']])
        zenSim.extend(fSource[settings['zen_reco']])
-       raSim.extend(fSource[draw][settings['az_reco']])
+       raSim.extend(fSource[settings['az_reco']])
 
     sim = dict()
     sim['en'] = np.array(enSim)
@@ -358,6 +394,8 @@ def calc_p_value(TS_dist, llh_vals, name='' ,save=True):
         return pval
     return
 
+
+# add f_muon
 def simulate(f, timeBins, tbdata, binNorms, NSim=1000, filename='', distortion=False, E_weights=True):
 # zen, azi, recoE, cr, AtmWeight,
 
@@ -367,6 +405,7 @@ def simulate(f, timeBins, tbdata, binNorms, NSim=1000, filename='', distortion=F
     raSim = []
     tot_rate = np.sum([np.sum(f[flux]) for
                        flux in settings['ftypes']])
+    # add f_muons to tot_rate ftype is here muon
     for flux in settings['ftypes']:
         print('Frac of {} : {:.2f}'.format(flux, np.sum(f[flux]) / tot_rate))
         N_events = int(NSim * np.sum(f[flux]) / tot_rate)
