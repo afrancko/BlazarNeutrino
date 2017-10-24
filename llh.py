@@ -32,7 +32,7 @@ hese_path = 'nugen-hese.npy'
 #LCC_path =  #'myCat2747.fits' #"/home/annaf/BlazarNeutrino/data/myCat2747.fits"
 #LCC_path =  "sourceListAll2283_1GeV.fits" #/home/annaf/BlazarNeutrino/data/
 LCC_path = "sourceListAll2283_1GeV.fits"#"/home/annaf/BlazarNeutrino/data/sourceListAll2283_1GeV.fits"
-HESE = True
+HESE = False
 
 if HESE:
     settings = {'E_reco': 'EReco_millipede',#'muex',

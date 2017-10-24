@@ -114,12 +114,21 @@ def create_splines(f, f_m, ftypes, ftype_m, zen_reco, az_reco, en_reco, spline_n
     print ftypes
     tot_weight = np.sum([f[flux][mask & delta_mask] for flux in ftypes], axis=0)
     if not f_m==None:
-        np.concatenate((tot_weight,f_m[ftype_m]), axis=0)
+        mask_m = np.isfinite(f_m[zen_reco])
+        f_m = f_m[mask_m]
+        print 'len(tot_weight)',len(tot_weight)
+        tot_weight = np.concatenate((tot_weight,f_m[ftype_m]))
+        print 'len(tot_weight)',len(tot_weight)
+
+        print 'weight ', f_m[ftype_m]
+        print 'cos ', np.cos(f_m[zen_reco])
+        print 'e reco ', np.log10(f_m[en_reco])
+        
     x = np.cos(f[zen_reco][mask & delta_mask])
     y = np.log10(f[en_reco][mask & delta_mask])
     if not f_m==None:
-        np.concatenate((x,np.cos(f_m[zen_reco])))
-        np.concatenate((y,np.log10(f_m[en_reco])))
+        x = np.concatenate((x,np.cos(f_m[zen_reco])))
+        y = np.concatenate((y,np.log10(f_m[en_reco])))
     H_tot, xedges, yedges = np.histogram2d(x, y,
                                        weights=tot_weight,
                                        bins=(20,np.linspace(3.5, 11, 30)), normed=True)
@@ -127,6 +136,8 @@ def create_splines(f, f_m, ftypes, ftype_m, zen_reco, az_reco, en_reco, spline_n
     H_tot = np.ma.masked_array(norm_hist(H_tot))
     H_tot.mask = (H_tot <= 0)
 
+    x = np.cos(f[zen_reco][mask & delta_mask])
+    y = np.log10(f[en_reco][mask & delta_mask])
     H_astro, xedges, yedges = np.histogram2d(x, y,
                                        weights=f['astro'][mask & delta_mask],
                                        bins=(20, np.linspace(3.5, 11, 30)),
@@ -146,7 +157,7 @@ def create_splines(f, f_m, ftypes, ftype_m, zen_reco, az_reco, en_reco, spline_n
     print('Create Zenith Spline...Check if ok..')
     coszen = np.cos(f[zen_reco][mask & delta_mask])
     if not f_m==None:
-        np.concatenate((coszen,f_m[zen_reco]))
+        coszen = np.concatenate((coszen,f_m[zen_reco]))
     vals, edges = np.histogram(coszen,
                                weights=tot_weight,
                                bins=30, density=True)
