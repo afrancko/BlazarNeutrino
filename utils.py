@@ -103,7 +103,7 @@ def norm_hist(h):
     return h
 
 
-def create_splines(f, ftypes, zen_reco, az_reco, en_reco):
+def create_splines(f, ftypes, zen_reco, az_reco, en_reco, spline_name):
     Hs = dict()
     mask = np.isfinite(f[zen_reco])
 
@@ -133,7 +133,7 @@ def create_splines(f, ftypes, zen_reco, az_reco, en_reco):
                                  setNewEdges(yedges),
                                  H_astro/H_tot,
                                  kx=1, ky=1, s=0)
-    np.save('E_spline.npy', spline)
+    np.save('E_spline%s.npy'%spline_name, spline)
     print(spline(-0.1, np.linspace(3.6,6.5,20)))
 
     # zenith dist 1D spline
@@ -144,17 +144,17 @@ def create_splines(f, ftypes, zen_reco, az_reco, en_reco):
     zen_spl = InterpolatedUnivariateSpline(setNewEdges(edges),
                                            np.log10(vals), k=3)
     print(10**zen_spl(setNewEdges(edges)))
-    np.save('coszen_spl.npy', zen_spl)
+    np.save('coszen_spl%s.npy'%spline_name, zen_spl)
 
     # zenith dist 1D spline
     print('Create Zenith Spline Signal with true zenith...Check if ok..')
     vals_sig, edges_sig = np.histogram(np.cos(f['zenith'][mask & delta_mask]),
-                                       weights=f['astro'],
+                                       weights=f['astro'][mask & delta_mask],
                                        bins=30, density=True)
     zen_spl_sig = InterpolatedUnivariateSpline(setNewEdges(edges_sig),
                                                np.log10(vals_sig), k=3)
     print(10**zen_spl_sig(setNewEdges(edges_sig)))
-    np.save('coszen_signal_spl.npy', zen_spl_sig)
+    np.save('coszen_signal_spl%s.npy'%spline_name, zen_spl_sig)
     
 
 @np.vectorize

@@ -32,18 +32,19 @@ hese_path = 'nugen-hese.npy'
 #LCC_path =  #'myCat2747.fits' #"/home/annaf/BlazarNeutrino/data/myCat2747.fits"
 #LCC_path =  "sourceListAll2283_1GeV.fits" #/home/annaf/BlazarNeutrino/data/
 LCC_path = "sourceListAll2283_1GeV.fits"#"/home/annaf/BlazarNeutrino/data/sourceListAll2283_1GeV.fits"
-HESE = True
+HESE = False
 
 if HESE:
-    settings = {'E_reco': 'truncatedE',#'muex',
-                'zen_reco': 'mpe_zen',
-                'az_reco': 'mpe_az',
-                'sigma': 'cr',
+    settings = {'E_reco': 'EReco_millipede',#'muex',
+                'zen_reco': 'zen_reco',
+                'az_reco': 'az_reco',
+                'sigma': 'DirReco_err50',
                 'gamma': 2.1,
                 'dec_true' : 'TrueDec',
                 'ra_true' : 'TrueRA',
-                'ftypes': ['Conventional', 'Prompt', 'EMinus2'],  # atmo = conv..sry for that
-                'ftype_muon': 'GaisserH3a', #???????
+                'ra_reco': 'DirReco_splinempe_ra',
+                'dec_reco': 'DirReco_splinempe_dec',
+                'ftypes': ['Conventional', 'Prompt', 'astro'],  # atmo = conv..sry for that
                 'Nsim': 100,
                 'Phi0': 0.91,
                 'TXS_ra': np.deg2rad(77.36061776),
@@ -429,9 +430,11 @@ def simulate(f, f_m, timeBins, tbdata, binNorms, NSim=1000, filename='', distort
     tot_rate = np.sum([np.sum(f[flux]) for
                        flux in settings['ftypes']])
     # add f_muons to tot_rate ftype is here muon
-    flux_m = settings['ftype_muon']
-    print f_m.dtype.names
-    tot_rate += np.sum(f_m[flux_m])
+    if not f_m==None:
+        flux_m = settings['ftype_muon']
+        print f_m.dtype.names
+        tot_rate += np.sum(f_m[flux_m])
+        
     for flux in settings['ftypes']:
         print('Frac of {} : {:.2f}'.format(flux, np.sum(f[flux]) / tot_rate))
         N_events = int(NSim * np.sum(f[flux]) / tot_rate)
@@ -443,15 +446,16 @@ def simulate(f, f_m, timeBins, tbdata, binNorms, NSim=1000, filename='', distort
         zenSim.extend(f[draw][settings['zen_reco']])
         raSim.extend(f[draw][settings['az_reco']])
 
-    #print('Frac of {} : {:.2f}'.format(flux_m, np.sum(f_m[flux_m]) / tot_rate))
-    #N_events = int(NSim * np.sum(f_m[flux_m]) / tot_rate)
-    #draw = np.random.choice(range(len(f_m)),
-    #                        N_events,
-    #                        p=f_m[flux_m] / np.sum(f_m[flux_m]))
-    #enSim.extend(f_m[draw][settings['E_reco']])
-    #crSim.extend(f_m[draw][settings['sigma']])
-    #zenSim.extend(f_m[draw][settings['zen_reco']])
-    #raSim.extend(f_m[draw][settings['az_reco']])
+    if not f_m==None:
+        print('Frac of {} : {:.2f}'.format(flux_m, np.sum(f_m[flux_m]) / tot_rate))
+        N_events = int(NSim * np.sum(f_m[flux_m]) / tot_rate)
+        draw = np.random.choice(range(len(f_m)),
+                                N_events,
+                                p=f_m[flux_m] / np.sum(f_m[flux_m]))
+        enSim.extend(f_m[draw][settings['E_reco']])
+        crSim.extend(f_m[draw][settings['sigma']])
+        zenSim.extend(f_m[draw][settings['zen_reco']])
+        raSim.extend(f_m[draw][settings['az_reco']])
         
     sim = dict()
     sim['en'] = np.array(enSim)
@@ -514,56 +518,73 @@ def readHESE(fname):
     mask = f['SignalTrackness']>0.1
     f = f[mask]
     f = rec_append_fields(f,'zenith',
-                          utils.dec_to_zen(f[settings['true_dec']]),
+                          utils.dec_to_zen(f[settings['dec_true']]),
                           dtypes=np.float64)
     f = rec_append_fields(f,'azimuth',
-                          utils.dec_to_zen(f[settings['true_ra']]),
+                          f[settings['ra_true']],
                           dtypes=np.float64)
-    f = rec_append_fields(f,'sigma',
-                          utils.dec_to_zen(f[settings['true_ra']]),
+    f = rec_append_fields(f,'zen_reco',
+                          utils.dec_to_zen(f['DirReco_splinempe_dec']),
                           dtypes=np.float64)
-
-    
-    
+    f = rec_append_fields(f,'az_reco',
+                          f['DirReco_splinempe_ra'],
+                          dtypes=np.float64)
+    f = rec_append_fields(f,'astro',
+                          f['EMinus2']/f['TrueEnergy']**(settings['gamma']-2.),
+                          dtypes=np.float64)
+    f = rec_append_fields(f,'ow',
+                          f['EMinus2']*f['TrueEnergy']**2,
+                          dtypes=np.float64)
+    f = rec_append_fields(f,'energy',
+                          f['TrueEnergy'],
+                          dtypes=np.float64)
     return f
     
 if __name__ == '__main__':
 
     jobN = int(sys.argv[1])
     # get Data
-    f = np.load(nugen_path)
-    astro = powerlaw(f['energy'], f['ow'])
-    f = rec_append_fields(f, 'astro',
-                          astro,
-                          dtypes=np.float64)
-    delta_mask = np.degrees(utils.delta_psi(f['zenith'], f['azimuth'], f[settings['zen_reco']], f[settings['az_reco']]))<5
-    mask = np.isfinite(f['cr'])
-    f = f[mask&delta_mask]
-    # get muon Data
-    f_m = np.load(muon_path)
-    print f_m.dtype.names
+    if not HESE:
+        f = np.load(nugen_path)
+        astro = powerlaw(f['energy'], f['ow'])
+        f = rec_append_fields(f, 'astro',
+                              astro,
+                              dtypes=np.float64)
+        delta_mask = np.degrees(utils.delta_psi(f['zenith'], f['azimuth'], f[settings['zen_reco']], f[settings['az_reco']]))<5
+        mask = np.isfinite(f['cr'])
+        f = f[mask&delta_mask]
+        # get muon Data
+        f_m = np.load(muon_path)
+        print f_m.dtype.names
 
-    f_m = rec_append_fields(f_m,'cr',
-                            utils.CRCorrection(f_m['on_mpe_zen'],f_m['NPE'], f_m['on_mpe_cr_zen'],f_m['on_mpe_cr_az']),
-                            dtypes=np.float64)
+        f_m = rec_append_fields(f_m,'cr',
+                                utils.CRCorrection(f_m['on_mpe_zen'],f_m['NPE'], f_m['on_mpe_cr_zen'],f_m['on_mpe_cr_az']),
+                                dtypes=np.float64)
     
-    mask = np.isfinite(f_m['cr'])
-    f_m = f_m[mask]
-    
+        mask = np.isfinite(f_m['cr'])
+        f_m = f_m[mask]
+        spline_name = ''
+    else:
+        f = readHESE(hese_path)
+        spline_name = '_hese'
+        f_m = None
+
+
+    print 'splinename', spline_name
     # read light curve catalog
     tbdata, timeBins = readLCCat()
     print('Read Cataloge...Finished')
-    if not os.path.exists('coszen_spl.npy') or \
-        not os.path.exists('E_spline.npy') or \
-        not os.path.exists('coszen_signal_spl.npy'):
+    if not os.path.exists('coszen_spl%s.npy'%spline_name) or \
+        not os.path.exists('E_spline.npy%s'%spline_name) or \
+        not os.path.exists('coszen_signal_spl%s.npy'%spline_name):
             print('Create New Splines..')
             utils.create_splines(f,settings['ftypes'],
                                  settings['zen_reco'],
                                  settings['az_reco'], 
-                                 settings['E_reco'])
-    E_spline = np.load('E_spline.npy')[()]
-    coszen_spline = np.load('coszen_spl.npy')[()]
-    coszen_signal_spline = np.load('coszen_signal_spl.npy')[()]
+                                 settings['E_reco'], spline_name)
+    E_spline = np.load('E_spline%s.npy'%spline_name)[()]
+    coszen_spline = np.load('coszen_spl%s.npy'%spline_name)[()]
+    coszen_signal_spline = np.load('coszen_signal_spl%s.npy'%spline_name)[()]
 
     
     binNorms = getNormInBin(tbdata)
