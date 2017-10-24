@@ -45,6 +45,7 @@ if HESE:
                 'ra_reco': 'DirReco_splinempe_ra',
                 'dec_reco': 'DirReco_splinempe_dec',
                 'ftypes': ['Conventional', 'Prompt', 'astro'],  # atmo = conv..sry for that
+                'ftype_muon': 'GaisserH3a', #???????
                 'Nsim': 100,
                 'Phi0': 0.91,
                 'TXS_ra': np.deg2rad(77.36061776),
@@ -432,7 +433,6 @@ def simulate(f, f_m, timeBins, tbdata, binNorms, NSim=1000, filename='', distort
     # add f_muons to tot_rate ftype is here muon
     if not f_m==None:
         flux_m = settings['ftype_muon']
-        print f_m.dtype.names
         tot_rate += np.sum(f_m[flux_m])
         
     for flux in settings['ftypes']:
@@ -449,6 +449,7 @@ def simulate(f, f_m, timeBins, tbdata, binNorms, NSim=1000, filename='', distort
     if not f_m==None:
         print('Frac of {} : {:.2f}'.format(flux_m, np.sum(f_m[flux_m]) / tot_rate))
         N_events = int(NSim * np.sum(f_m[flux_m]) / tot_rate)
+
         draw = np.random.choice(range(len(f_m)),
                                 N_events,
                                 p=f_m[flux_m] / np.sum(f_m[flux_m]))
@@ -555,12 +556,6 @@ if __name__ == '__main__':
         f = f[mask&delta_mask]
         # get muon Data
         f_m = np.load(muon_path)
-        print f_m.dtype.names
-
-        f_m = rec_append_fields(f_m,'cr',
-                                utils.CRCorrection(f_m['on_mpe_zen'],f_m['NPE'], f_m['on_mpe_cr_zen'],f_m['on_mpe_cr_az']),
-                                dtypes=np.float64)
-    
         mask = np.isfinite(f_m['cr'])
         f_m = f_m[mask]
         spline_name = ''
@@ -578,14 +573,14 @@ if __name__ == '__main__':
         not os.path.exists('E_spline.npy%s'%spline_name) or \
         not os.path.exists('coszen_signal_spl%s.npy'%spline_name):
             print('Create New Splines..')
-            utils.create_splines(f,settings['ftypes'],
+            utils.create_splines(f,f_m,settings['ftypes'], settings['ftype_muon'],
                                  settings['zen_reco'],
                                  settings['az_reco'], 
                                  settings['E_reco'], spline_name)
     E_spline = np.load('E_spline%s.npy'%spline_name)[()]
     coszen_spline = np.load('coszen_spl%s.npy'%spline_name)[()]
     coszen_signal_spline = np.load('coszen_signal_spl%s.npy'%spline_name)[()]
-
+    exit()
     
     binNorms = getNormInBin(tbdata)
 

@@ -103,7 +103,7 @@ def norm_hist(h):
     return h
 
 
-def create_splines(f, ftypes, zen_reco, az_reco, en_reco, spline_name):
+def create_splines(f, f_m, ftypes, ftype_m, zen_reco, az_reco, en_reco, spline_name):
     Hs = dict()
     mask = np.isfinite(f[zen_reco])
 
@@ -111,9 +111,17 @@ def create_splines(f, ftypes, zen_reco, az_reco, en_reco, spline_name):
     # energy ratio 2D spline
     print('Create Energy Spline..check yourself whether it is ok')
     zenith_bins=list(np.linspace(-1.,0.,6, endpoint=False)) + list(np.linspace(0.,1.,10))
+    print ftypes
     tot_weight = np.sum([f[flux][mask & delta_mask] for flux in ftypes], axis=0)
+    print "tot w ", tot_weight
+    if not f_m==None:
+        tot_weight += np.sum(f_m[ftype_m], axis=0)
+        print 'tot w after muons ', tot_weight
     x = np.cos(f[zen_reco][mask & delta_mask])
     y = np.log10(f[en_reco][mask & delta_mask])
+    if not f_m==None:
+        np.concatenate((x,np.cos(f_m[zen_reco])))
+        np.concatenate((y,np.log10(f_m[en_reco])))
     H_tot, xedges, yedges = np.histogram2d(x, y,
                                        weights=tot_weight,
                                        bins=(20,np.linspace(3.5, 11, 30)), normed=True)
