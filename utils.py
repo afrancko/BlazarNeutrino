@@ -165,3 +165,26 @@ def zen_to_dec(zen):
 @np.vectorize
 def dec_to_zen(dec):
     return dec + 0.5*np.pi
+
+def CRCorrection(zen, lognpe, cr_dzen, cr_dazi):
+	
+    # From pull fit
+    slope = -0.59247735857
+    inter = 2.05973576429
+    
+    #define minimum value allowed (0.25 \deg) in radians
+    min_corrected_pull = 0.0043633
+    # Calculate sigma
+    sin2  = np.sin(zen)*np.sin(zen)
+    sigma = np.sqrt( cr_dzen*cr_dzen + cr_dazi*cr_dazi*sin2/2. )
+    
+    # Return corrected value
+    pull_corrtd = sigma / np.power(10, inter + slope * lognpe)
+
+    mask = pull_corrtd < min_corrected_pull
+    pull_corrtd[mask] =min_corrected_pull
+    return pull_corrtd
+    #if pull_corrtd < min_corrected_pull:
+#	return min_corrected_pull
+#    else:
+#	return pull_corrtd

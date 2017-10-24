@@ -26,26 +26,47 @@ import utils
 # ------------------------------- Settings ---------------------------- #
 
 nugen_path = 'combined.npy' #'/data/user/tglauch/EHE/processed/combined.npy'
-muon_path = '/data/user/tglauch/EHE/processed/corsika_combined.npy'
+muon_path = 'corsika_combined.npy'#'/data/user/tglauch/EHE/processed/corsika_combined.npy'
+hese_path = 'nugen-hese.npy'
 #LCC_path = "/home/annaf/BlazarNeutrino/data/myCat.fits"
 #LCC_path =  #'myCat2747.fits' #"/home/annaf/BlazarNeutrino/data/myCat2747.fits"
 #LCC_path =  "sourceListAll2283_1GeV.fits" #/home/annaf/BlazarNeutrino/data/
 LCC_path = "sourceListAll2283_1GeV.fits"#"/home/annaf/BlazarNeutrino/data/sourceListAll2283_1GeV.fits"
+HESE = True
 
-settings = {'E_reco': 'truncatedE',#'muex',
-            'zen_reco': 'mpe_zen',
-            'az_reco': 'mpe_az',
-            'sigma': 'cr',
-            'gamma': 2.1,
-            'ftypes': ['astro', 'atmo', 'prompt'],  # atmo = conv..sry for that
-            'Nsim': 10000,
-            'Phi0': 0.91,
-            'TXS_ra': np.deg2rad(77.36061776),
-            'TXS_dec': np.deg2rad(5.69683419),
-            'E_weights': True,
-            'distortion': False}
+if HESE:
+    settings = {'E_reco': 'truncatedE',#'muex',
+                'zen_reco': 'mpe_zen',
+                'az_reco': 'mpe_az',
+                'sigma': 'cr',
+                'gamma': 2.1,
+                'dec_true' : 'TrueDec',
+                'ra_true' : 'TrueRA',
+                'ftypes': ['Conventional', 'Prompt', 'EMinus2'],  # atmo = conv..sry for that
+                'ftype_muon': 'GaisserH3a', #???????
+                'Nsim': 100,
+                'Phi0': 0.91,
+                'TXS_ra': np.deg2rad(77.36061776),
+                'TXS_dec': np.deg2rad(5.69683419),
+                'E_weights': True,
+                'distortion': False} 
+
+else:
+    settings = {'E_reco': 'truncatedE',#'muex',
+                'zen_reco': 'mpe_zen',
+                'az_reco': 'mpe_az',
+                'sigma': 'cr',
+                'gamma': 2.1,
+                'ftypes': ['astro', 'atmo', 'prompt'],  # atmo = conv..sry for that
+                'ftype_muon': 'GaisserH3a', #???????
+                'Nsim': 100,
+                'Phi0': 0.91,
+                'TXS_ra': np.deg2rad(77.36061776),
+                'TXS_dec': np.deg2rad(5.69683419),
+                'E_weights': True,
+                'distortion': False}
 #addinfo = 'with_E_weights_HE'
-addinfo = 'with_E_weights_increasing_radius'
+addinfo = 'with_E_weights_increasing_radius_HESE'
 
 
 dtype = [("en", np.float64),
@@ -219,13 +240,6 @@ def likelihood(sim, tbdata, timeBins, binNorms, distortion=False, E_weights=True
     # in the following those are replaced by zeros
     fluxS = np.nan_to_num(fluxS)
     fluxError = np.nan_to_num(fluxError) 
-
-    #mask = (fluxS<=0) | (fluxError<=0)
-    #fluxS[mask] = 1e-25
-    #fluxError[mask] =  1e-12
-    
-    #if fluxError<=0:
-    #    fluxError = 1e
     
     if not distortion:
         coszen = np.cos(utils.dec_to_zen(dec))
@@ -405,7 +419,7 @@ def calc_p_value(TS_dist, llh_vals, name='' ,save=True):
 
 
 # add f_muon
-def simulate(f, timeBins, tbdata, binNorms, NSim=1000, filename='', distortion=False, E_weights=True):
+def simulate(f, f_m, timeBins, tbdata, binNorms, NSim=1000, filename='', distortion=False, E_weights=True):
 # zen, azi, recoE, cr, AtmWeight,
 
     enSim = []
@@ -415,6 +429,9 @@ def simulate(f, timeBins, tbdata, binNorms, NSim=1000, filename='', distortion=F
     tot_rate = np.sum([np.sum(f[flux]) for
                        flux in settings['ftypes']])
     # add f_muons to tot_rate ftype is here muon
+    flux_m = settings['ftype_muon']
+    print f_m.dtype.names
+    tot_rate += np.sum(f_m[flux_m])
     for flux in settings['ftypes']:
         print('Frac of {} : {:.2f}'.format(flux, np.sum(f[flux]) / tot_rate))
         N_events = int(NSim * np.sum(f[flux]) / tot_rate)
@@ -426,6 +443,16 @@ def simulate(f, timeBins, tbdata, binNorms, NSim=1000, filename='', distortion=F
         zenSim.extend(f[draw][settings['zen_reco']])
         raSim.extend(f[draw][settings['az_reco']])
 
+    #print('Frac of {} : {:.2f}'.format(flux_m, np.sum(f_m[flux_m]) / tot_rate))
+    #N_events = int(NSim * np.sum(f_m[flux_m]) / tot_rate)
+    #draw = np.random.choice(range(len(f_m)),
+    #                        N_events,
+    #                        p=f_m[flux_m] / np.sum(f_m[flux_m]))
+    #enSim.extend(f_m[draw][settings['E_reco']])
+    #crSim.extend(f_m[draw][settings['sigma']])
+    #zenSim.extend(f_m[draw][settings['zen_reco']])
+    #raSim.extend(f_m[draw][settings['az_reco']])
+        
     sim = dict()
     sim['en'] = np.array(enSim)
     sim['ra'] =  np.random.uniform(0., 2 * np.pi, len(enSim))  #np.array(raSim)
@@ -481,6 +508,25 @@ def plotLLH(llhfile, tbdata, timeBins, binNorms, distortion=False, E_weights=Tru
     #plt.show()
 
 
+
+def readHESE(fname):
+    f = np.load(fname)
+    mask = f['SignalTrackness']>0.1
+    f = f[mask]
+    f = rec_append_fields(f,'zenith',
+                          utils.dec_to_zen(f[settings['true_dec']]),
+                          dtypes=np.float64)
+    f = rec_append_fields(f,'azimuth',
+                          utils.dec_to_zen(f[settings['true_ra']]),
+                          dtypes=np.float64)
+    f = rec_append_fields(f,'sigma',
+                          utils.dec_to_zen(f[settings['true_ra']]),
+                          dtypes=np.float64)
+
+    
+    
+    return f
+    
 if __name__ == '__main__':
 
     jobN = int(sys.argv[1])
@@ -493,6 +539,17 @@ if __name__ == '__main__':
     delta_mask = np.degrees(utils.delta_psi(f['zenith'], f['azimuth'], f[settings['zen_reco']], f[settings['az_reco']]))<5
     mask = np.isfinite(f['cr'])
     f = f[mask&delta_mask]
+    # get muon Data
+    f_m = np.load(muon_path)
+    print f_m.dtype.names
+
+    f_m = rec_append_fields(f_m,'cr',
+                            utils.CRCorrection(f_m['on_mpe_zen'],f_m['NPE'], f_m['on_mpe_cr_zen'],f_m['on_mpe_cr_az']),
+                            dtypes=np.float64)
+    
+    mask = np.isfinite(f_m['cr'])
+    f_m = f_m[mask]
+    
     # read light curve catalog
     tbdata, timeBins = readLCCat()
     print('Read Cataloge...Finished')
@@ -518,13 +575,13 @@ if __name__ == '__main__':
                                               jobN)
     print('##############Create BG TS Distrbution##############')
     if not os.path.exists(filename):
-        llh_bg_dist= simulate(f, timeBins, tbdata,
+        llh_bg_dist= simulate(f, f_m, timeBins, tbdata,
                               binNorms, settings['Nsim'], filename=filename, E_weights=settings['E_weights'])
     else:
         llh_bg_dist = np.load(filename)
 
     print('##############Generate Background Trials##############')
-    llh_trials = simulate(f, timeBins, tbdata,
+    llh_trials = simulate(f, f_m, timeBins, tbdata,
                           binNorms, settings['Nsim'], E_weights=True)
 
     print('calculate p-values')
