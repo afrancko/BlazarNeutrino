@@ -32,7 +32,7 @@ hese_path = 'nugen-hese.npy'
 #LCC_path =  #'myCat2747.fits' #"/home/annaf/BlazarNeutrino/data/myCat2747.fits"
 #LCC_path =  "sourceListAll2283_1GeV.fits" #/home/annaf/BlazarNeutrino/data/
 LCC_path = "sourceListAll2283_1GeV.fits"#"/home/annaf/BlazarNeutrino/data/sourceListAll2283_1GeV.fits"
-HESE = False
+HESE = True
 
 if HESE:
     settings = {'E_reco': 'EReco_millipede',#'muex',
@@ -46,7 +46,7 @@ if HESE:
                 'dec_reco': 'DirReco_splinempe_dec',
                 'ftypes': ['Conventional', 'Prompt', 'astro'],  # atmo = conv..sry for that
                 'ftype_muon': 'GaisserH3a', #???????
-                'Nsim': 100,
+                'Nsim': 1000,
                 'Phi0': 0.91,
                 'TXS_ra': np.deg2rad(77.36061776),
                 'TXS_dec': np.deg2rad(5.69683419),
@@ -269,9 +269,11 @@ def likelihood(sim, tbdata, timeBins, binNorms, distortion=False, E_weights=True
     else:
         llh = -2 * np.log(sigma) + np.log(sourceSum) - coszen_prob 
 
-    print('Likelihood: {} \n'.format(2*llh))
-    print '----'
+    #print('Likelihood: {} \n'.format(2*llh))
+    #print '----'
     if np.isnan(llh) or np.isinf(llh):
+        print 'energy', en
+        print 'coszen ', coszen
         print "sourceTerm ", sourceTerm
         print "nuisanceTerm ", nuisanceTerm
         print "E_ratio ", E_ratio
@@ -519,13 +521,15 @@ def readHESE(fname):
     mask = f['SignalTrackness']>0.1
     f = f[mask]
     f = rec_append_fields(f,'zenith',
-                          utils.dec_to_zen(f[settings['dec_true']]),
+                          #utils.dec_to_zen(f[settings['dec_true']]),
+                          f[settings['dec_true']],
                           dtypes=np.float64)
     f = rec_append_fields(f,'azimuth',
                           f[settings['ra_true']],
                           dtypes=np.float64)
     f = rec_append_fields(f,'zen_reco',
-                          utils.dec_to_zen(f['DirReco_splinempe_dec']),
+                          #utils.dec_to_zen(f['DirReco_splinempe_dec']),
+                          f['DirReco_splinempe_dec'],
                           dtypes=np.float64)
     f = rec_append_fields(f,'az_reco',
                           f['DirReco_splinempe_ra'],
@@ -580,7 +584,6 @@ if __name__ == '__main__':
     E_spline = np.load('E_spline%s.npy'%spline_name)[()]
     coszen_spline = np.load('coszen_spl%s.npy'%spline_name)[()]
     coszen_signal_spline = np.load('coszen_signal_spl%s.npy'%spline_name)[()]
-    exit()
     
     binNorms = getNormInBin(tbdata)
 

@@ -113,10 +113,8 @@ def create_splines(f, f_m, ftypes, ftype_m, zen_reco, az_reco, en_reco, spline_n
     zenith_bins=list(np.linspace(-1.,0.,6, endpoint=False)) + list(np.linspace(0.,1.,10))
     print ftypes
     tot_weight = np.sum([f[flux][mask & delta_mask] for flux in ftypes], axis=0)
-    print "tot w ", tot_weight
     if not f_m==None:
-        tot_weight += np.sum(f_m[ftype_m], axis=0)
-        print 'tot w after muons ', tot_weight
+        np.concatenate((tot_weight,f_m[ftype_m]), axis=0)
     x = np.cos(f[zen_reco][mask & delta_mask])
     y = np.log10(f[en_reco][mask & delta_mask])
     if not f_m==None:
@@ -146,7 +144,10 @@ def create_splines(f, f_m, ftypes, ftype_m, zen_reco, az_reco, en_reco, spline_n
 
     # zenith dist 1D spline
     print('Create Zenith Spline...Check if ok..')
-    vals, edges = np.histogram(np.cos(f[zen_reco][mask & delta_mask]),
+    coszen = np.cos(f[zen_reco][mask & delta_mask])
+    if not f_m==None:
+        np.concatenate((coszen,f_m[zen_reco]))
+    vals, edges = np.histogram(coszen,
                                weights=tot_weight,
                                bins=30, density=True)
     zen_spl = InterpolatedUnivariateSpline(setNewEdges(edges),
