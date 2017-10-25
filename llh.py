@@ -117,7 +117,11 @@ def getNormInBin(tbdata):
        np.save(outfile,binNorms)
     return binNorms
 
-
+def getTotalNorm(tbdata):
+    sumEFlux = [np.sum(s['eflux'][~np.isnan(s['eflux'])]) for s in tbdata]
+    totSum = np.sum(sumEFlux)
+    return totSum
+    
 def GreatCircleDistance(ra_1, dec_1, ra_2, dec_2, use_astro=False):
     '''Compute the great circle distance between two events'''
     '''SkyCoord is super slow ..., don't use it'''
@@ -174,7 +178,7 @@ def getTBin(testT, timeBins):
 # ra, dec in rad, nuTime in Fermi MET
 
 
-def get_sources(ra, dec, sigma, nuTime, tbdata, timeBins, binNorms):
+def get_sources(ra, dec, sigma, nuTime, tbdata, timeBins):
     # for testing set to 3
     circ = sigma * 5.
     if circ > np.deg2rad(10):
@@ -209,7 +213,7 @@ def get_sources(ra, dec, sigma, nuTime, tbdata, timeBins, binNorms):
     maskNan = np.isnan(fluxNuTime)
    
     retval = np.deg2rad(foundSources['RAJ2000'][~maskNan]), \
-        np.deg2rad(foundSources['DEJ2000'][~maskNan]), fluxNuTime[~maskNan], fluxNuTimeError[~maskNan], binNorms[tbin]
+        np.deg2rad(foundSources['DEJ2000'][~maskNan]), fluxNuTime[~maskNan], fluxNuTimeError[~maskNan]
     #if not len(foundSources) == 0:
     #    print "found %i sources close by" % len(foundSources)
     #    print "flux weight", fluxNuTime/binNorms[tbin]
@@ -219,7 +223,7 @@ def get_sources(ra, dec, sigma, nuTime, tbdata, timeBins, binNorms):
     return retval
 
 
-def likelihood(sim, tbdata, timeBins, binNorms, distortion=False, E_weights=True):
+def likelihood(sim, tbdata, timeBins, totNorm, distortion=False, E_weights=True):
 
     en = sim['en']
     ra = sim['ra']
@@ -227,13 +231,13 @@ def likelihood(sim, tbdata, timeBins, binNorms, distortion=False, E_weights=True
     sigma = sim['sigma']
     nuTime = sim['nuTime']
 
-    foundSources = get_sources(ra, dec, sigma, nuTime, tbdata, timeBins, binNorms)
+    foundSources = get_sources(ra, dec, sigma, nuTime, tbdata, timeBins)
     if foundSources is None:
         return -99
     if len(foundSources[0]) == 0:
         return -99
 
-    raS, decS, fluxS, fluxError, fluxNorm = foundSources
+    raS, decS, fluxS, fluxError = foundSources
 
     fluxS = np.asarray(fluxS)
     fluxError = np.asarray(fluxError)
@@ -245,7 +249,10 @@ def likelihood(sim, tbdata, timeBins, binNorms, distortion=False, E_weights=True
     
     if not distortion:
         coszen = np.cos(utils.dec_to_zen(dec))
-        E_ratio = np.log(E_spline(coszen, np.log10(en),grid=False))
+        if E_spline(coszen, np.log10(en),grid=False)>0:
+            E_ratio = np.log(E_spline(coszen, np.log10(en),grid=False))
+        else:
+            E_ratio = 1e-25
         coszen_prob = np.log(10 ** (coszen_spline(coszen)) / (2 * np.pi))
     else:
         coszen_prob = np.random.uniform(0,5)
@@ -256,11 +263,11 @@ def likelihood(sim, tbdata, timeBins, binNorms, distortion=False, E_weights=True
     
     nuisanceTerm = 1./np.sqrt(2.*np.pi*fluxError ** 2) * np.exp(-(fluxMax-fluxS)**2 /(2*fluxError**2))
     
-    sourceTerm = fluxMax/fluxNorm * np.exp(-GreatCircleDistance(ra, dec, raS, decS)**2 / (2. * sigma**2))
+    sourceTerm = fluxMax/totNorm * np.exp(-GreatCircleDistance(ra, dec, raS, decS)**2 / (2. * sigma**2))
     #sourceTerm = fluxS/fluxNorm * np.exp(-GreatCircleDistance(ra, dec, raS, decS)**2 / (2. * sigma**2))
 
     sourceSum = np.sum(sourceTerm*nuisanceTerm)
-    
+   
     if (sourceSum<=1e-25):
         sourceSum=1e-25
     
@@ -284,7 +291,8 @@ def likelihood(sim, tbdata, timeBins, binNorms, distortion=False, E_weights=True
     return 2 * llh
 
 
-def inject_pointsource(f, raS, decS, nuTime, filename='', gamma=2.1, Nsim=1000, distortion=False, E_weights=True, sourceList=None):
+def inject_pointsource(f, tbdata, timeBins, totNorm, raS, decS, nuTime, filename='', gamma=2.1,
+                       Nsim=1000, distortion=False, E_weights=True, sourceList=None):
 
     enSim = []
     crSim = []
@@ -398,7 +406,7 @@ def inject_pointsource(f, raS, decS, nuTime, filename='', gamma=2.1, Nsim=1000, 
         if i % print_after == 0:
             print('{}/{}'.format(i, Nsim))
         #print sourceList['Source_Name'][i], sourceList['eflux'][i], sim['nuTime'][i]
-        l = likelihood(sim[i], tbdata, timeBins, binNorms, distortion=distortion, E_weights=E_weights)
+        l = likelihood(sim[i], tbdata, timeBins, totNorm, distortion=distortion, E_weights=E_weights)
         llh.append(l)
 
     if not filename == '':
@@ -423,7 +431,7 @@ def calc_p_value(TS_dist, llh_vals, name='' ,save=True):
 
 
 # add f_muon
-def simulate(f, f_m, timeBins, tbdata, binNorms, NSim=1000, filename='', distortion=False, E_weights=True):
+def simulate(f, f_m, timeBins, tbdata, totNorm, NSim=1000, filename='', distortion=False, E_weights=True):
 # zen, azi, recoE, cr, AtmWeight,
 
     enSim = []
@@ -483,7 +491,7 @@ def simulate(f, f_m, timeBins, tbdata, binNorms, NSim=1000, filename='', distort
     for i in range(len(sim)):
         if i % print_after == 0:
             print('{}/{}'.format(i, NSim))
-        l = likelihood(sim[i], tbdata, timeBins, binNorms, distortion=distortion, E_weights=E_weights)
+        l = likelihood(sim[i], tbdata, timeBins, totNorm, distortion=distortion, E_weights=E_weights)
         llh.append(l)
 
     llh = np.asarray(llh)
@@ -492,7 +500,7 @@ def simulate(f, f_m, timeBins, tbdata, binNorms, NSim=1000, filename='', distort
     return llh
 
 
-def plotLLH(llhfile, tbdata, timeBins, binNorms, distortion=False, E_weights=True):
+def plotLLH(llhfile, tbdata, timeBins, totNorm, distortion=False, E_weights=True):
     outfile = llhfile.replace('output', 'plots').replace('npy', 'png')
     llh = np.load(llhfile)
     bins = np.linspace(-100, 25, 100)
@@ -505,7 +513,7 @@ def plotLLH(llhfile, tbdata, timeBins, binNorms, distortion=False, E_weights=Tru
     ax.set_yscale('log')
     ax.set_xlim(-100)
     print('Eval Event')
-    llhNu = likelihood(EHE_event, tbdata, timeBins, binNorms, distortion=False, E_weights=True)
+    llhNu = likelihood(EHE_event, tbdata, timeBins, totNorm, distortion=False, E_weights=True)
     #plt.axvline(llhNu)
     plt.grid()
     plt.savefig(outfile)
@@ -585,8 +593,9 @@ if __name__ == '__main__':
     coszen_spline = np.load('coszen_spl%s.npy'%spline_name)[()]
     coszen_signal_spline = np.load('coszen_signal_spl%s.npy'%spline_name)[()]
     
-    binNorms = getNormInBin(tbdata)
-
+    #binNorms = getNormInBin(tbdata)
+    totNorm = getTotalNorm(tbdata)
+    
     print('Generating PDFs..Finished')
 
     filename = './output/{}_llh_{}_{:.2f}_{}.npy'.format(addinfo, settings['Nsim'],
@@ -595,13 +604,13 @@ if __name__ == '__main__':
     print('##############Create BG TS Distrbution##############')
     if not os.path.exists(filename):
         llh_bg_dist= simulate(f, f_m, timeBins, tbdata,
-                              binNorms, settings['Nsim'], filename=filename, E_weights=settings['E_weights'])
+                              totNorm, settings['Nsim'], filename=filename, E_weights=settings['E_weights'])
     else:
         llh_bg_dist = np.load(filename)
 
     print('##############Generate Background Trials##############')
     llh_trials = simulate(f, f_m, timeBins, tbdata,
-                          binNorms, settings['Nsim'], E_weights=True)
+                          totNorm, settings['Nsim'], E_weights=True)
 
     print('calculate p-values')
     print len(llh_bg_dist), len(llh_trials)
@@ -609,7 +618,7 @@ if __name__ == '__main__':
 
     print('##############Generate Signal Trials, single source##############')
     signal_gamma = 2.1
-    signal_trials = inject_pointsource(f, settings['TXS_ra'], settings['TXS_dec'], EHE_event['nuTime'], 
+    signal_trials = inject_pointsource(f, tbdata, timeBins, totNorm, settings['TXS_ra'], settings['TXS_dec'], EHE_event['nuTime'], 
                                        filename=filename.replace('%.2f'%settings['gamma'],'%.2f'%signal_gamma).replace('.npy','_signal.npy'), 
                                        gamma=signal_gamma, Nsim=settings['Nsim'],distortion=settings['distortion'],E_weights=settings['E_weights'],
                                        sourceList=None)
@@ -620,7 +629,7 @@ if __name__ == '__main__':
 
     print('##############Generate Signal Trials from brightness distribution##############')
     sourceList = utils.makeSourceFluxList(tbdata, LCC_path)
-    signal_trials = inject_pointsource(f, None, None, None,
+    signal_trials = inject_pointsource(f, tbdata, timeBins, totNorm, None, None, None,
                                        filename=filename.replace('%.2f'%settings['gamma'],'%.2f'%signal_gamma).replace('.npy','_signal_sourceList.npy'),
                                        gamma=signal_gamma, Nsim=settings['Nsim'],distortion=settings['distortion'],E_weights=settings['E_weights'],
                                        sourceList=sourceList)
@@ -629,5 +638,5 @@ if __name__ == '__main__':
     print('calculate p-values signal')
     calc_p_value(llh_bg_dist, signal_trials, name='%s_signal_brightness'%addinfo)
 
-    exp_llh = plotLLH(filename, tbdata, timeBins, binNorms,distortion=settings['distortion'], E_weights=settings['E_weights'])
+    exp_llh = plotLLH(filename, tbdata, timeBins, totNorm,distortion=settings['distortion'], E_weights=settings['E_weights'])
     print('Exp P-Val {}'.format(calc_p_value(llh_bg_dist, exp_llh, save=False)))
