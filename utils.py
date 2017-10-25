@@ -104,65 +104,60 @@ def norm_hist(h):
 
 
 def create_splines(f, f_m, ftypes, ftype_m, zen_reco, az_reco, en_reco, spline_name):
+    # f_m = None
     Hs = dict()
     mask = np.isfinite(f[zen_reco])
-
     delta_mask = np.degrees(delta_psi(f['zenith'], f['azimuth'], f[zen_reco], f[az_reco]))<5
+
     # energy ratio 2D spline
     print('Create Energy Spline..check yourself whether it is ok')
-    zenith_bins=list(np.linspace(-1.,0.,6, endpoint=False)) + list(np.linspace(0.,1.,10))
-    print ftypes
+    zenith_bins=list(np.linspace(-1.,0.,10, endpoint=False)) + list(np.linspace(0.,1.,8))
     tot_weight = np.sum([f[flux][mask & delta_mask] for flux in ftypes], axis=0)
     if not f_m==None:
-        mask_m = np.isfinite(f_m[zen_reco])
-        f_m = f_m[mask_m]
-        print 'len(tot_weight)',len(tot_weight)
+        mask_m = (np.isfinite(f_m[zen_reco])) & (np.cos(f_m[zen_reco])<0.5)
+        delta_mask_m = np.degrees(delta_psi(f_m['zenith'], f_m['azimuth'], f_m[zen_reco], f_m[az_reco]))<5
+        f_m = f_m[mask_m & delta_mask_m]
         tot_weight = np.concatenate((tot_weight,f_m[ftype_m]))
-        print 'len(tot_weight)',len(tot_weight)
-
-        print 'weight ', f_m[ftype_m]
-        print 'cos ', np.cos(f_m[zen_reco])
-        print 'e reco ', np.log10(f_m[en_reco])
-        
-    x = np.cos(f[zen_reco][mask & delta_mask])
+       
+    x = np.cos(f[zen_reco][mask & delta_mask]) 
     y = np.log10(f[en_reco][mask & delta_mask])
     if not f_m==None:
         x = np.concatenate((x,np.cos(f_m[zen_reco])))
         y = np.concatenate((y,np.log10(f_m[en_reco])))
     H_tot, xedges, yedges = np.histogram2d(x, y,
                                        weights=tot_weight,
-                                       bins=(20,np.linspace(3.5, 11, 30)), normed=True)
+                                       bins=(zenith_bins,np.linspace(3.0, 11, 20)),
+                                       normed=True)
 
     H_tot = np.ma.masked_array(norm_hist(H_tot))
     H_tot.mask = (H_tot <= 0)
-
+    print H_tot
     x = np.cos(f[zen_reco][mask & delta_mask])
     y = np.log10(f[en_reco][mask & delta_mask])
     H_astro, xedges, yedges = np.histogram2d(x, y,
                                        weights=f['astro'][mask & delta_mask],
-                                       bins=(20, np.linspace(3.5, 11, 30)),
+                                       bins=(zenith_bins, np.linspace(3.0, 11, 20)),
                                        normed=True)
-    print yedges
     H_astro = np.ma.masked_array(norm_hist(H_astro))
     H_astro.mask = (H_astro <= 0)
 
     spline = RectBivariateSpline(setNewEdges(xedges),
                                  setNewEdges(yedges),
                                  H_astro/H_tot,
-                                 kx=1, ky=1, s=0)
+                                 kx=3, ky=1, s=0)
     np.save('E_spline%s.npy'%spline_name, spline)
-    print(spline(-0.1, np.linspace(3.6,6.5,20)))
 
     # zenith dist 1D spline
     print('Create Zenith Spline...Check if ok..')
     coszen = np.cos(f[zen_reco][mask & delta_mask])
     if not f_m==None:
-        coszen = np.concatenate((coszen,f_m[zen_reco]))
+        coszen = np.concatenate((coszen,np.cos(f_m[zen_reco])))
     vals, edges = np.histogram(coszen,
                                weights=tot_weight,
                                bins=30, density=True)
+    print('vals')
     zen_spl = InterpolatedUnivariateSpline(setNewEdges(edges),
-                                           np.log10(vals), k=3)
+                                           np.log10(vals), k=1)
     print(10**zen_spl(setNewEdges(edges)))
     np.save('coszen_spl%s.npy'%spline_name, zen_spl)
 
@@ -172,7 +167,7 @@ def create_splines(f, f_m, ftypes, ftype_m, zen_reco, az_reco, en_reco, spline_n
                                        weights=f['astro'][mask & delta_mask],
                                        bins=30, density=True)
     zen_spl_sig = InterpolatedUnivariateSpline(setNewEdges(edges_sig),
-                                               np.log10(vals_sig), k=3)
+                                               np.log10(vals_sig), k=1)
     print(10**zen_spl_sig(setNewEdges(edges_sig)))
     np.save('coszen_signal_spl%s.npy'%spline_name, zen_spl_sig)
     
