@@ -64,7 +64,7 @@ else:
                 'gamma': 2.1,
                 'ftypes': ['astro', 'atmo', 'prompt'],  # atmo = conv..sry for that
                 'ftype_muon': 'GaisserH3a', #???????
-                'Nsim': 10000,
+                'Nsim': 1000,
                 'Phi0': 0.91,
                 'TXS_ra': np.deg2rad(77.36061776),
                 'TXS_dec': np.deg2rad(5.69683419),
@@ -72,7 +72,7 @@ else:
                 'E_weights': False,
                 'distortion': False}
 #addinfo = 'with_E_weights_HE'
-addinfo = 'wo_E_weights_increasing_radius'
+addinfo = 'wo_E_weights_increasing_radius_addZenTerm'
 
 if HESE==True:
     addinfo = '%s_HESE'%addinfo
@@ -271,7 +271,7 @@ def likelihood(sim, tbdata, timeBins, totNorm, distortion=False, E_weights=True)
     
     nuisanceTerm = 1./np.sqrt(2.*np.pi*fluxError ** 2) * np.exp(-(fluxMax-fluxS)**2 /(2*fluxError**2))
     
-    sourceTerm = fluxMax/totNorm * np.exp(-GreatCircleDistance(ra, dec, raS, decS)**2 / (2. * (sigma*CR_corr*settings['sys_err_corr'])**2))
+    sourceTerm = fluxMax/totNorm * np.exp(-GreatCircleDistance(ra, dec, raS, decS)**2 / (2. * (sigma*CR_corr*settings['sys_err_corr'])**2))*coszen_signal_spline(coszen)
     #sourceTerm = fluxS/fluxNorm * np.exp(-GreatCircleDistance(ra, dec, raS, decS)**2 / (2. * sigma**2))
 
     sourceSum = np.sum(sourceTerm*nuisanceTerm)
