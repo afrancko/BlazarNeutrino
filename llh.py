@@ -31,8 +31,10 @@ hese_path = 'nugen-hese.npy'
 #LCC_path = "/home/annaf/BlazarNeutrino/data/myCat.fits"
 #LCC_path =  #'myCat2747.fits' #"/home/annaf/BlazarNeutrino/data/myCat2747.fits"
 #LCC_path =  "sourceListAll2283_1GeV.fits" #/home/annaf/BlazarNeutrino/data/
-LCC_path = "sourceListAll2283_1GeV.fits"#"/home/annaf/BlazarNeutrino/data/sourceListAll2283_1GeV.fits"
+LCC_path = "sourceListAll2280_1GeV_fixedSpec.fits"#"/home/annaf/BlazarNeutrino/data/sourceListAll2283_1GeV.fits"
 HESE = False
+CR_corr = 1.1774
+
 
 if HESE:
     settings = {'E_reco': 'EReco_millipede',#'muex',
@@ -46,10 +48,11 @@ if HESE:
                 'dec_reco': 'DirReco_splinempe_dec',
                 'ftypes': ['Conventional', 'Prompt', 'astro'],  # atmo = conv..sry for that
                 'ftype_muon': 'GaisserH3a', #???????
-                'Nsim': 1000,
+                'Nsim': 5000,
                 'Phi0': 0.91,
                 'TXS_ra': np.deg2rad(77.36061776),
                 'TXS_dec': np.deg2rad(5.69683419),
+                'sys_err_corr': 1.21,
                 'E_weights': True,
                 'distortion': False} 
 
@@ -61,14 +64,18 @@ else:
                 'gamma': 2.1,
                 'ftypes': ['astro', 'atmo', 'prompt'],  # atmo = conv..sry for that
                 'ftype_muon': 'GaisserH3a', #???????
-                'Nsim': 100,
+                'Nsim': 10000,
                 'Phi0': 0.91,
                 'TXS_ra': np.deg2rad(77.36061776),
                 'TXS_dec': np.deg2rad(5.69683419),
-                'E_weights': True,
+                'sys_err_corr': 1.21,
+                'E_weights': False,
                 'distortion': False}
 #addinfo = 'with_E_weights_HE'
-addinfo = 'with_E_weights_increasing_radius_HESE'
+addinfo = 'wo_E_weights_increasing_radius'
+
+if HESE==True:
+    addinfo = '%s_HESE'%addinfo
 
 
 dtype = [("en", np.float64),
@@ -120,6 +127,7 @@ def getNormInBin(tbdata):
 def getTotalNorm(tbdata):
     sumEFlux = [np.sum(s['eflux'][~np.isnan(s['eflux'])]) for s in tbdata]
     totSum = np.sum(sumEFlux)
+    print "total norm ", totSum
     return totSum
     
 def GreatCircleDistance(ra_1, dec_1, ra_2, dec_2, use_astro=False):
@@ -211,7 +219,7 @@ def get_sources(ra, dec, sigma, nuTime, tbdata, timeBins):
        return None
 
     maskNan = np.isnan(fluxNuTime)
-   
+    
     retval = np.deg2rad(foundSources['RAJ2000'][~maskNan]), \
         np.deg2rad(foundSources['DEJ2000'][~maskNan]), fluxNuTime[~maskNan], fluxNuTimeError[~maskNan]
     #if not len(foundSources) == 0:
@@ -263,7 +271,7 @@ def likelihood(sim, tbdata, timeBins, totNorm, distortion=False, E_weights=True)
     
     nuisanceTerm = 1./np.sqrt(2.*np.pi*fluxError ** 2) * np.exp(-(fluxMax-fluxS)**2 /(2*fluxError**2))
     
-    sourceTerm = fluxMax/totNorm * np.exp(-GreatCircleDistance(ra, dec, raS, decS)**2 / (2. * sigma**2))
+    sourceTerm = fluxMax/totNorm * np.exp(-GreatCircleDistance(ra, dec, raS, decS)**2 / (2. * (sigma*CR_corr*settings['sys_err_corr'])**2))
     #sourceTerm = fluxS/fluxNorm * np.exp(-GreatCircleDistance(ra, dec, raS, decS)**2 / (2. * sigma**2))
 
     sourceSum = np.sum(sourceTerm*nuisanceTerm)
@@ -514,7 +522,8 @@ def plotLLH(llhfile, tbdata, timeBins, totNorm, distortion=False, E_weights=True
     ax.set_xlim(-100)
     print('Eval Event')
     llhNu = likelihood(EHE_event, tbdata, timeBins, totNorm, distortion=False, E_weights=True)
-    #plt.axvline(llhNu)
+    print "llh ", llhNu
+    plt.axvline(llhNu)
     plt.grid()
     plt.savefig(outfile)
 
@@ -618,25 +627,27 @@ if __name__ == '__main__':
 
     print('##############Generate Signal Trials, single source##############')
     signal_gamma = 2.1
-    signal_trials = inject_pointsource(f, tbdata, timeBins, totNorm, settings['TXS_ra'], settings['TXS_dec'], EHE_event['nuTime'], 
-                                       filename=filename.replace('%.2f'%settings['gamma'],'%.2f'%signal_gamma).replace('.npy','_signal.npy'), 
-                                       gamma=signal_gamma, Nsim=settings['Nsim'],distortion=settings['distortion'],E_weights=settings['E_weights'],
-                                       sourceList=None)
-    print('calculate p-values signal')
-    print len(llh_bg_dist), len(signal_trials)
-    calc_p_value(llh_bg_dist, signal_trials, name='%s_signal'%addinfo)
+    #signal_trials = inject_pointsource(f, tbdata, timeBins, totNorm, settings['TXS_ra'], settings['TXS_dec'], EHE_event['nuTime'], 
+    #                                   filename=filename.replace('%.2f'%settings['gamma'],'%.2f'%signal_gamma).replace('.npy','_signal.npy'), 
+    #                                   gamma=signal_gamma, Nsim=settings['Nsim'],distortion=settings['distortion'],E_weights=settings['E_weights'],
+    #                                   sourceList=None)
+    #print('calculate p-values signal')
+    #print len(llh_bg_dist), len(signal_trials)
+    #calc_p_value(llh_bg_dist, signal_trials, name='%s_signal'%addinfo)
 
 
-    print('##############Generate Signal Trials from brightness distribution##############')
-    sourceList = utils.makeSourceFluxList(tbdata, LCC_path)
-    signal_trials = inject_pointsource(f, tbdata, timeBins, totNorm, None, None, None,
-                                       filename=filename.replace('%.2f'%settings['gamma'],'%.2f'%signal_gamma).replace('.npy','_signal_sourceList.npy'),
-                                       gamma=signal_gamma, Nsim=settings['Nsim'],distortion=settings['distortion'],E_weights=settings['E_weights'],
-                                       sourceList=sourceList)
+    #print('##############Generate Signal Trials from brightness distribution##############')
+    #sourceList = utils.makeSourceFluxList(tbdata, LCC_path)
+    #mask = np.isnan(sourceList['eflux'])
+    #print "time bins with nan ", len(sourceList[mask])
+    #signal_trials = inject_pointsource(f, tbdata, timeBins, totNorm, None, None, None,
+    #                                   filename=filename.replace('%.2f'%settings['gamma'],'%.2f'%signal_gamma).replace('.npy','_signal_sourceList.npy'),
+     #                                  gamma=signal_gamma, Nsim=settings['Nsim'],distortion=settings['distortion'],E_weights=settings['E_weights'],
+     #                                  sourceList=sourceList)
 
 
-    print('calculate p-values signal')
-    calc_p_value(llh_bg_dist, signal_trials, name='%s_signal_brightness'%addinfo)
+    #print('calculate p-values signal')
+    #calc_p_value(llh_bg_dist, signal_trials, name='%s_signal_brightness'%addinfo)
 
     exp_llh = plotLLH(filename, tbdata, timeBins, totNorm,distortion=settings['distortion'], E_weights=settings['E_weights'])
     print('Exp P-Val {}'.format(calc_p_value(llh_bg_dist, exp_llh, save=False)))
