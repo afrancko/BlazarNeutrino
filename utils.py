@@ -192,6 +192,12 @@ def zen_to_dec(zen):
 def dec_to_zen(dec):
     return dec + 0.5*np.pi
 
+
+def pullCorr(cr,npe):
+    coeff = [ -0.11479, 2.69525, -25.09445, 115.86502, -265.40347, 242.24527 ]
+    return cr * np.polyval(coeff, np.log10(npe)) / 1.1774
+   
+
 def CRCorrection(zen, lognpe, cr_dzen, cr_dazi):
 	
     # From pull fit

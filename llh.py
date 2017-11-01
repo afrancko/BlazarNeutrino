@@ -110,7 +110,7 @@ EHE_event_best = np.array((230990,
                            #np.deg2rad(5.72),
                            settings['TXS_ra'],
                            settings['TXS_dec'],
-                           pullCorr(np.deg2rad(0.25)),
+                           utils.pullCorr(np.deg2rad(0.25),230990),
                            58014), #-9 #MJD of EHE event #shift event by 4 days to put it in last LC bin (new shifted LC is in the catalog!)
                           dtype=dtype)
 
@@ -119,7 +119,7 @@ EHE_event = np.array((230990,
                       #np.deg2rad(5.72),
                       np.deg2rad(77.285),
                       np.deg2rad(5.7517),
-                      pullCorr(np.deg2rad(0.25)),
+                      utils.pullCorr(np.deg2rad(0.25),230990),
                       58014), #-9 #MJD of EHE event #shift event by 4 days to put it in last LC bin (new shifted LC is in the catalog!)
                      dtype=dtype)
 
@@ -300,6 +300,10 @@ def likelihood(sim, tbdata, timeBins, totNorm, distortion=False, E_weights=True)
                    bounds=bounds, options={'maxiter':50,'disp':False,'ftol':1e-11})
     
     fluxMax = res.x
+
+    print "fluxMax ", fluxMax
+    print "acc/totNorm ", acceptance/totNorm
+    print "-2coszen ",  -2*coszen_prob
     
     #fluxM = fluxS*0.5 + np.sqrt((fluxS*0.5)**2 + fluxError**2 )
     # signal likelihood
@@ -593,13 +597,7 @@ def readHESE(fname):
                           f['TrueEnergy'],
                           dtypes=np.float64)
     return f
-
-def pullCorr(f):
-    cr = f['cr']
-    coeff = [ -0.11479, 2.69525, -25.09445, 115.86502, -265.40347, 242.24527 ]
-    estimator_corrected = cr * np.polyval(coeff, np.log10(f['NPE'])) / 1.1774
-    return f
-    
+ 
     
 if __name__ == '__main__':
 
@@ -615,13 +613,13 @@ if __name__ == '__main__':
         mask = np.isfinite(f['cr'])
         f = f[mask&delta_mask]
         f['cr'][f['cr']<np.deg2rad(0.25)] = np.deg2rad(0.25)
-        f = pullCorr(f)
+        f['cr'] = utils.pullCorr(f['cr'],f['NPE'])
         # get muon Data
         f_m = np.load(muon_path)
         mask = np.isfinite(f_m['cr'])
         f_m = f_m[mask]
         f_m['cr'][f_m['cr']<np.deg2rad(0.25)] = np.deg2rad(0.25)
-        f_m = pullCorr(f_m)
+        f_m = utils.pullCorr(f_m['cr'],f_m['NPE'])
         spline_name = ''
     else:
         f = readHESE(hese_path)
