@@ -39,7 +39,8 @@ LCC_path = "/home/annaf/BlazarNeutrino/data/sourceListAll2280_1GeV_fixedSpec.fit
 #LCC_path = "sourceListAll2280_1GeV.fits"#"/home/annaf/BlazarNeutrino/data/sourceListAll2283_1GeV.fits"
 
 HESE = False
-CR_corr = 1./1.1774
+# now included in pullCorr function
+CR_corr = 1 #1./1.1774
 
 
 if HESE:
@@ -54,12 +55,12 @@ if HESE:
                 'dec_reco': 'DirReco_splinempe_dec',
                 'ftypes': ['Conventional', 'Prompt', 'astro'],  # atmo = conv..sry for that
                 'ftype_muon': 'GaisserH3a', #???????
-                'Nsim': 5000,
+                'Nsim': 50000,
                 'Phi0': 0.91,
                 'TXS_ra': np.deg2rad(77.36061776),
                 'TXS_dec': np.deg2rad(5.69683419),
                 'sys_err_corr': 1.21,
-                'E_weights': True,
+                'E_weights': False,
                 'distortion': False} 
 
 else:
@@ -105,12 +106,21 @@ dtype = [("en", np.float64),
 # MuEX: 120000 GeV
 # MJD : 58018.87118553)
 
+EHE_event_best = np.array((230990,
+                           #np.deg2rad(77.43),
+                           #np.deg2rad(5.72),
+                           settings['TXS_ra'],
+                           settings['TXS_dec'],
+                           utils.pullCorr(np.deg2rad(0.25),230990),
+                           58014), #-9 #MJD of EHE event #shift event by 4 days to put it in last LC bin (new shifted LC is in the catalog!)
+                          dtype=dtype)
+
 EHE_event = np.array((230990,
                       #np.deg2rad(77.43),
                       #np.deg2rad(5.72),
                       np.deg2rad(77.285),
                       np.deg2rad(5.7517),
-                      np.deg2rad(0.25),
+                      utils.pullCorr(np.deg2rad(0.25),230990),
                       58014), #-9 #MJD of EHE event #shift event by 4 days to put it in last LC bin (new shifted LC is in the catalog!)
                      dtype=dtype)
 
@@ -291,6 +301,10 @@ def likelihood(sim, tbdata, timeBins, totNorm, distortion=False, E_weights=True)
                    bounds=bounds, options={'maxiter':50,'disp':False,'ftol':1e-11})
     
     fluxMax = res.x
+
+    print "fluxMax ", fluxMax
+    print "acc/totNorm ", acceptance/totNorm
+    print "-2coszen ",  -2*coszen_prob
     
     #fluxM = fluxS*0.5 + np.sqrt((fluxS*0.5)**2 + fluxError**2 )
     # signal likelihood
@@ -532,7 +546,7 @@ def simulate(f, f_m, timeBins, tbdata, totNorm, NSim=1000, filename='', distorti
     return llh
 
 
-def plotLLH(llhfile, tbdata, timeBins, totNorm, distortion=False, E_weights=True):
+def plotLLH(llhfile, tbdata, timeBins, totNorm, EHE_event, distortion=False, E_weights=True):
     outfile = llhfile.replace('output', 'plots').replace('npy', 'png')
     llh = np.load(llhfile)
     bins = np.linspace(-100, 25, 100)
@@ -584,6 +598,7 @@ def readHESE(fname):
                           f['TrueEnergy'],
                           dtypes=np.float64)
     return f
+ 
     
 if __name__ == '__main__':
 
@@ -599,11 +614,13 @@ if __name__ == '__main__':
         mask = np.isfinite(f['cr'])
         f = f[mask&delta_mask]
         f['cr'][f['cr']<np.deg2rad(0.25)] = np.deg2rad(0.25)
+        f['cr'] = utils.pullCorr(f['cr'],f['NPE'])
         # get muon Data
         f_m = np.load(muon_path)
         mask = np.isfinite(f_m['cr'])
         f_m = f_m[mask]
         f_m['cr'][f_m['cr']<np.deg2rad(0.25)] = np.deg2rad(0.25)
+        f_m = utils.pullCorr(f_m['cr'],f_m['NPE'])
         spline_name = ''
     else:
         f = readHESE(hese_path)
@@ -677,6 +694,7 @@ if __name__ == '__main__':
     #print('calculate p-values signal')
     #calc_p_value(llh_bg_dist, signal_trials, name='%s_signal_brightness'%addinfo)
 
+
     exp_llh = plotLLH(filename,
                       tbdata,
                       timeBins,
@@ -686,3 +704,11 @@ if __name__ == '__main__':
 
     print('Exp LLH : {}'.format(exp_llh))
     print('Exp P-Val {}'.format(calc_p_value(llh_bg_dist, exp_llh, save=False)))
+
+    #exp_llh = plotLLH(filename, tbdata, timeBins, totNorm, EHE_event, distortion=settings['distortion'], E_weights=settings['E_weights'])
+    #print exp_llh
+    #print('Exp P-Val {}'.format(calc_p_value(llh_bg_dist, exp_llh, save=False)))
+    #print('best possible p-value')
+    #exp_llh = plotLLH(filename, tbdata, timeBins, totNorm, EHE_event_best, distortion=settings['distortion'], E_weights=settings['E_weights'])
+    #print('Exp P-Val {}'.format(calc_p_value(llh_bg_dist, exp_llh, save=False)))
+    #print exp_llh
