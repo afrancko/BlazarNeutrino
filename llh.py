@@ -105,21 +105,21 @@ dtype = [("en", np.float64),
 # MuEX: 120000 GeV
 # MJD : 58018.87118553)
 
-EHE_event_best = np.array((230990,
+EHE_event_best = np.array((5784.9552,
                            #np.deg2rad(77.43),
                            #np.deg2rad(5.72),
                            settings['TXS_ra'],
                            settings['TXS_dec'],
-                           utils.pullCorr(np.deg2rad(0.25),230990),
+                           utils.pullCorr(np.deg2rad(0.25),5784.9552),
                            58014), #-9 #MJD of EHE event #shift event by 4 days to put it in last LC bin (new shifted LC is in the catalog!)
                           dtype=dtype)
 
-EHE_event = np.array((230990,
+EHE_event = np.array((5784.9552,
                       #np.deg2rad(77.43),
                       #np.deg2rad(5.72),
                       np.deg2rad(77.285),
                       np.deg2rad(5.7517),
-                      utils.pullCorr(np.deg2rad(0.25),230990),
+                      utils.pullCorr(np.deg2rad(0.25),5784.9552),
                       58014), #-9 #MJD of EHE event #shift event by 4 days to put it in last LC bin (new shifted LC is in the catalog!)
                      dtype=dtype)
 
@@ -300,11 +300,7 @@ def likelihood(sim, tbdata, timeBins, totNorm, distortion=False, E_weights=True)
                    bounds=bounds, options={'maxiter':50,'disp':False,'ftol':1e-11})
     
     fluxMax = res.x
-
-    print "fluxMax ", fluxMax
-    print "acc/totNorm ", acceptance/totNorm
-    print "-2coszen ",  -2*coszen_prob
-    
+  
     #fluxM = fluxS*0.5 + np.sqrt((fluxS*0.5)**2 + fluxError**2 )
     # signal likelihood
     print 'likelihood before/after min. ', -negLogLike(fluxS, fluxS, fluxError,sourceTerm), -negLogLike(fluxMax, fluxS, fluxError,sourceTerm)
@@ -700,3 +696,12 @@ if __name__ == '__main__':
     exp_llh = plotLLH(filename, tbdata, timeBins, totNorm, EHE_event_best, distortion=settings['distortion'], E_weights=settings['E_weights'])
     #print('Exp P-Val {}'.format(calc_p_value(llh_bg_dist, exp_llh, save=False)))
     print exp_llh
+
+    #pastEvents = utils.getPastAlerts():
+    #llhPastEvent = []
+    #pvalPastEvents = []
+    #for ev in pastEvents:
+    #    llhPastEvent.append(likelihood(ev, tbdata, timeBins, totNorm, distortion=False, E_weights=True))
+    #    pvalPastEvents.append(calc_p_value(llh_bg_dist, llhPastEvent[-1], save=False))
+
+    
