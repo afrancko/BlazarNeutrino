@@ -170,6 +170,17 @@ def create_splines(f, f_m, ftypes, ftype_m, zen_reco, az_reco, en_reco, spline_n
                                                np.log10(vals_sig), k=1)
     print(10**zen_spl_sig(setNewEdges(edges_sig)))
     np.save('coszen_signal_spl%s.npy'%spline_name, zen_spl_sig)
+
+    # zenith dist 1D spline
+    print('Create Zenith Spline Signal with reco zenith...Check if ok..')
+    vals_sig_rec, edges_sig_rec = np.histogram(np.cos(f[zen_reco][mask & delta_mask]),
+                                               weights=f['astro'][mask & delta_mask],
+                                               bins=30, density=True)
+    zen_spl_sig_rec = InterpolatedUnivariateSpline(setNewEdges(edges_sig),
+                                               np.log10(vals_sig), k=1)
+    print(10**zen_spl_sig_rec(setNewEdges(edges_sig)))
+    np.save('coszen_signal_reco_spl%s.npy'%spline_name, zen_spl_sig_rec)
+
     
 
 @np.vectorize
