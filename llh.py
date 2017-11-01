@@ -1,3 +1,4 @@
+#! /usr/bin/env python
 # coding: utf-8
 
 # from astropy.coordinates import SkyCoord
@@ -28,13 +29,13 @@ from scipy.optimize import minimize
 
 # ------------------------------- Settings ---------------------------- #
 
-nugen_path = 'combined.npy' #'/data/user/tglauch/EHE/processed/combined.npy'
-muon_path = 'corsika_combined.npy'#'/data/user/tglauch/EHE/processed/corsika_combined.npy'
-hese_path = 'nugen-hese.npy'
+nugen_path = '/data/user/tglauch/EHE/processed/combined.npy' #'/data/user/tglauch/EHE/processed/combined.npy'
+muon_path = '/data/user/tglauch/EHE/processed/corsika_combined.npy'#'/data/user/tglauch/EHE/processed/corsika_combined.npy'
+hese_path = '/home/annaf/BlazarNeutrino/data/nugen-hese.npy'
 #LCC_path = "/home/annaf/BlazarNeutrino/data/myCat.fits"
 #LCC_path =  #'myCat2747.fits' #"/home/annaf/BlazarNeutrino/data/myCat2747.fits"
 #LCC_path =  "sourceListAll2283_1GeV.fits" #/home/annaf/BlazarNeutrino/data/
-LCC_path = "sourceListAll2280_1GeV_fixedSpec.fits"#"/home/annaf/BlazarNeutrino/data/sourceListAll2283_1GeV.fits"
+LCC_path = "/home/annaf/BlazarNeutrino/data/sourceListAll2280_1GeV_fixedSpec.fits"#"/home/annaf/BlazarNeutrino/data/sourceListAll2283_1GeV.fits"
 #LCC_path = "sourceListAll2280_1GeV.fits"#"/home/annaf/BlazarNeutrino/data/sourceListAll2283_1GeV.fits"
 
 HESE = False
@@ -643,23 +644,23 @@ if __name__ == '__main__':
     else:
         llh_bg_dist = np.load(filename)
 
-    print('##############Generate Background Trials##############')
-    #llh_trials = simulate(f, f_m, timeBins, tbdata,
+    # print('##############Generate Background Trials##############')
+    # llh_trials = simulate(f, f_m, timeBins, tbdata,
     #                      totNorm, settings['Nsim'], E_weights=True)
 
     #print('calculate p-values')
     #print len(llh_bg_dist), len(llh_trials)
     #calc_p_value(llh_bg_dist, llh_trials, name=addinfo)
 
-    print('##############Generate Signal Trials, single source##############')
-    signal_gamma = 2.1
-    signal_trials = inject_pointsource(f, tbdata, timeBins, totNorm, settings['TXS_ra'], settings['TXS_dec'], EHE_event['nuTime'], 
-                                       filename=filename.replace('%.2f'%settings['gamma'],'%.2f'%signal_gamma).replace('.npy','_signal.npy'), 
-                                       gamma=signal_gamma, Nsim=settings['Nsim'],distortion=settings['distortion'],E_weights=settings['E_weights'],
-                                       sourceList=None)
-    print('calculate p-values signal')
-    print len(llh_bg_dist), len(signal_trials)
-    calc_p_value(llh_bg_dist, signal_trials, name='%s_signal'%addinfo)
+    # print('##############Generate Signal Trials, single source##############')
+    # signal_gamma = 2.1
+    # signal_trials = inject_pointsource(f, tbdata, timeBins, totNorm, settings['TXS_ra'], settings['TXS_dec'], EHE_event['nuTime'], 
+    #                                    filename=filename.replace('%.2f'%settings['gamma'],'%.2f'%signal_gamma).replace('.npy','_signal.npy'), 
+    #                                    gamma=signal_gamma, Nsim=settings['Nsim'],distortion=settings['distortion'],E_weights=settings['E_weights'],
+    #                                    sourceList=None)
+    # print('calculate p-values signal')
+    # print len(llh_bg_dist), len(signal_trials)
+    # calc_p_value(llh_bg_dist, signal_trials, name='%s_signal'%addinfo)
 
 
     #print('##############Generate Signal Trials from brightness distribution##############')
@@ -676,5 +677,12 @@ if __name__ == '__main__':
     #print('calculate p-values signal')
     #calc_p_value(llh_bg_dist, signal_trials, name='%s_signal_brightness'%addinfo)
 
-    exp_llh = plotLLH(filename, tbdata, timeBins, totNorm,distortion=settings['distortion'], E_weights=settings['E_weights'])
+    exp_llh = plotLLH(filename,
+                      tbdata,
+                      timeBins,
+                      totNorm,
+                      distortion=settings['distortion'],
+                      E_weights=settings['E_weights'])
+
+    print('Exp LLH : {}'.format(exp_llh))
     print('Exp P-Val {}'.format(calc_p_value(llh_bg_dist, exp_llh, save=False)))
