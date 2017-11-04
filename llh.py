@@ -29,13 +29,13 @@ from scipy.optimize import minimize
 
 # ------------------------------- Settings ---------------------------- #
 
-nugen_path = '/data/user/tglauch/EHE/processed/combined.npy' #'/data/user/tglauch/EHE/processed/combined.npy'
-muon_path = '/data/user/tglauch/EHE/processed/corsika_combined.npy'#'/data/user/tglauch/EHE/processed/corsika_combined.npy'
+nugen_path = 'combined.npy' #'/data/user/tglauch/EHE/processed/combined.npy'
+muon_path = 'corsika_combined.npy'#'/data/user/tglauch/EHE/processed/corsika_combined.npy'
 hese_path = '/home/annaf/BlazarNeutrino/data/nugen-hese.npy'
 #LCC_path = "/home/annaf/BlazarNeutrino/data/myCat.fits"
 #LCC_path =  #'myCat2747.fits' #"/home/annaf/BlazarNeutrino/data/myCat2747.fits"
 #LCC_path =  "sourceListAll2283_1GeV.fits" #/home/annaf/BlazarNeutrino/data/
-LCC_path = "/home/annaf/BlazarNeutrino/data/sourceListAll2280_1GeV_fixedSpec.fits"#"/home/annaf/BlazarNeutrino/data/sourceListAll2283_1GeV.fits"
+LCC_path = "sourceListAll2280_1GeV_fixedSpec.fits"#"/home/annaf/BlazarNeutrino/data/sourceListAll2283_1GeV.fits"
 #LCC_path = "sourceListAll2280_1GeV.fits"#"/home/annaf/BlazarNeutrino/data/sourceListAll2283_1GeV.fits"
 
 HESE = False
@@ -71,7 +71,7 @@ else:
                 'gamma': 2.1,
                 'ftypes': ['astro', 'atmo', 'prompt'],  # atmo = conv..sry for that
                 'ftype_muon': 'GaisserH3a', #???????
-                'Nsim': 50000,
+                'Nsim': 5000,
                 'Phi0': 0.91,
                 'TXS_ra': np.deg2rad(77.36061776),
                 'TXS_dec': np.deg2rad(5.69683419),
@@ -82,6 +82,11 @@ else:
 #addinfo = 'with_E_weights_HE'
 addinfo = 'wo_E_weights_increasing_radius_fitNuis_pull'
 #addinfo = 'wo_E_weights_increasing_radius_noNuis'
+
+CHIBA = True
+
+if CHIBA:
+    addinfo = '%s_CHIBA'%addinfo
 
 
 if HESE==True:
@@ -144,6 +149,19 @@ def getNormInBin(tbdata):
                 binNorms[ti]+=tbdata[si]['eflux'][ti]
        np.save(outfile,binNorms)
     return binNorms
+
+# get <I> for Chiba weighting
+def getSourceAverage(tbdata):
+    sumEFlux = [np.sum(s['flux'][~np.isnan(s['flux'] & s['ts']>10)]) for s in tbdata]
+    sumEFlux =  sumEFlux/float(len(tbdata[0]['flux']))
+    cols = [] 
+    cols.append(
+        pyfits.Column(name='avFlux', format='D', array=sumEFlux)
+    )
+    orig_cols = tbdata.columns
+    new_cols = pyfits.ColDefs(cols)
+    hdu = pyfits.BinTableHDU.from_columns(orig_cols + new_cols)
+    return tbdata
 
 def getTotalNorm(tbdata):
     sumEFlux = [np.sum(s['eflux'][~np.isnan(s['eflux'])]) for s in tbdata]
@@ -211,12 +229,25 @@ def get_sources(ra, dec, sigma, nuTime, tbdata, timeBins):
         
     if (len(foundSources)) == 0:
        return None
-    
-    fluxHist = foundSources['eflux']
-    fluxHistErr = foundSources['eflux_err']
 
     ts = foundSources['ts']
-
+   
+    if CHIBA:
+        # mask small TS bins
+        tsMask = ts>10
+        foundSources = foundSources[tsMask]
+        ts = ts[tsMask]
+        # mask flux below average
+        maskFlux = foundSources['flux']>foundSources['avFlux']
+        ts = ts[maskFlux]
+        foundSources = foundSources[maskFlux]
+        fluxHist = foundSources['flux']
+        fluxHistErr = foundSources['flux_err']
+    else:
+        fluxHist = foundSources['eflux']
+        fluxHistErr = foundSources['eflux_err']
+  
+    
     tbin = getTBin(nuTime, timeBins)
     tsNuTime = np.asarray([f[tbin] for f in ts])
     fluxNuTime = np.asarray([f[tbin] for f in fluxHist])
@@ -226,9 +257,14 @@ def get_sources(ra, dec, sigma, nuTime, tbdata, timeBins):
        return None
 
     maskNan = np.isnan(fluxNuTime)
-    
-    retval = np.deg2rad(foundSources['RAJ2000'][~maskNan]), \
-        np.deg2rad(foundSources['DEJ2000'][~maskNan]), fluxNuTime[~maskNan], fluxNuTimeError[~maskNan]
+
+    if CHIBA:
+        avFlux = foundSources['avFlux']
+        retval = np.deg2rad(foundSources['RAJ2000'][~maskNan]), \
+                 np.deg2rad(foundSources['DEJ2000'][~maskNan]), fluxNuTime[~maskNan]/avFlux, fluxNuTimeError[~maskNan]/avFlux
+    else:
+        retval = np.deg2rad(foundSources['RAJ2000'][~maskNan]), \
+                 np.deg2rad(foundSources['DEJ2000'][~maskNan]), fluxNuTime[~maskNan], fluxNuTimeError[~maskNan]
     if 0:#not len(foundSources) == 0:
         print "found %i sources close by" % len(foundSources)
         print "flux weight", fluxNuTime
@@ -286,7 +322,13 @@ def likelihood(sim, tbdata, timeBins, totNorm, distortion=False, E_weights=True)
 
     
     acceptance = 10**coszen_signal_reco_spline(coszen)
-    sourceTerm = 1./totNorm /(2*np.pi*(sigma*CR_corr*settings['sys_err_corr'])**2)*np.exp(-GreatCircleDistance(ra, dec, raS, decS)**2 / (2. * (sigma*CR_corr*settings['sys_err_corr'])**2)) * acceptance
+
+    if CHIBA:
+        norm = 1.0
+    else:
+        norm = totNorm
+
+    sourceTerm = 1./norm /(2*np.pi*(sigma*CR_corr*settings['sys_err_corr'])**2)*np.exp(-GreatCircleDistance(ra, dec, raS, decS)**2 / (2. * (sigma*CR_corr*settings['sys_err_corr'])**2)) * acceptance
           
     bounds = []
     for s in range(len(fluxS)):
@@ -665,15 +707,15 @@ if __name__ == '__main__':
     #print len(llh_bg_dist), len(llh_trials)
     #calc_p_value(llh_bg_dist, llh_trials, name=addinfo)
 
-    # print('##############Generate Signal Trials, single source##############')
-    # signal_gamma = 2.1
-    # signal_trials = inject_pointsource(f, tbdata, timeBins, totNorm, settings['TXS_ra'], settings['TXS_dec'], EHE_event['nuTime'], 
-    #                                    filename=filename.replace('%.2f'%settings['gamma'],'%.2f'%signal_gamma).replace('.npy','_signal.npy'), 
-    #                                    gamma=signal_gamma, Nsim=settings['Nsim'],distortion=settings['distortion'],E_weights=settings['E_weights'],
-    #                                    sourceList=None)
-    # print('calculate p-values signal')
-    # print len(llh_bg_dist), len(signal_trials)
-    # calc_p_value(llh_bg_dist, signal_trials, name='%s_signal'%addinfo)
+    print('##############Generate Signal Trials, single source##############')
+    signal_gamma = 2.1
+    signal_trials = inject_pointsource(f, tbdata, timeBins, totNorm, settings['TXS_ra'], settings['TXS_dec'], EHE_event['nuTime'], 
+                                       filename=filename.replace('%.2f'%settings['gamma'],'%.2f'%signal_gamma).replace('.npy','_signal.npy'), 
+                                       gamma=signal_gamma, Nsim=settings['Nsim'],distortion=settings['distortion'],E_weights=settings['E_weights'],
+                                       sourceList=None)
+    print('calculate p-values signal')
+    print len(llh_bg_dist), len(signal_trials)
+    calc_p_value(llh_bg_dist, signal_trials, name='%s_signal'%addinfo)
 
 
     #print('##############Generate Signal Trials from brightness distribution##############')
