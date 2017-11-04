@@ -153,16 +153,17 @@ def getNormInBin(tbdata):
 
 # get <I> for Chiba weighting
 def getSourceAverage(tbdata):
-    sumEFlux = [np.sum(s['flux'][~np.isnan(s['flux'] & s['ts']>10)]) for s in tbdata]
+    sumEFlux = [np.sum(s['flux'][(~np.isnan(s['flux'])) & (s['ts']>10)]) for s in tbdata]
+    sumEFlux = np.asarray(sumEFlux)
     sumEFlux =  sumEFlux/float(len(tbdata[0]['flux']))
     cols = [] 
     cols.append(
-        pyfits.Column(name='avFlux', format='D', array=sumEFlux)
+        fits.Column(name='avFlux', format='D', array=sumEFlux)
     )
     orig_cols = tbdata.columns
-    new_cols = pyfits.ColDefs(cols)
-    hdu = pyfits.BinTableHDU.from_columns(orig_cols + new_cols)
-    return tbdata
+    new_cols = fits.ColDefs(cols)
+    hdu = fits.BinTableHDU.from_columns(orig_cols + new_cols)
+    return hdu.data
 
 def getTotalNorm(tbdata):
     sumEFlux = [np.sum(s['eflux'][~np.isnan(s['eflux'])]) for s in tbdata]
@@ -231,24 +232,17 @@ def get_sources(ra, dec, sigma, nuTime, tbdata, timeBins):
     if (len(foundSources)) == 0:
        return None
 
-    ts = foundSources['ts']
    
     if CHIBA:
-        # mask small TS bins
-        tsMask = ts>10
-        foundSources = foundSources[tsMask]
-        ts = ts[tsMask]
-        # mask flux below average
-        maskFlux = foundSources['flux']>foundSources['avFlux']
-        ts = ts[maskFlux]
-        foundSources = foundSources[maskFlux]
         fluxHist = foundSources['flux']
         fluxHistErr = foundSources['flux_err']
     else:
         fluxHist = foundSources['eflux']
         fluxHistErr = foundSources['eflux_err']
   
-    
+
+    ts = foundSources['ts']
+        
     tbin = getTBin(nuTime, timeBins)
     tsNuTime = np.asarray([f[tbin] for f in ts])
     fluxNuTime = np.asarray([f[tbin] for f in fluxHist])
@@ -260,9 +254,13 @@ def get_sources(ra, dec, sigma, nuTime, tbdata, timeBins):
     maskNan = np.isnan(fluxNuTime)
 
     if CHIBA:
+        maskTS = tsNuTime>10
         avFlux = foundSources['avFlux']
-        retval = np.deg2rad(foundSources['RAJ2000'][~maskNan]), \
-                 np.deg2rad(foundSources['DEJ2000'][~maskNan]), fluxNuTime[~maskNan]/avFlux, fluxNuTimeError[~maskNan]/avFlux
+        maskFlux = fluxNuTime>avFlux
+        retval = np.deg2rad(foundSources['RAJ2000'][~maskNan & maskTS & maskFlux]), \
+                 np.deg2rad(foundSources['DEJ2000'][~maskNan & maskTS & maskFlux]),\
+                 fluxNuTime[~maskNan & maskTS & maskFlux]/avFlux[~maskNan & maskTS & maskFlux], \
+                 fluxNuTimeError[~maskNan & maskTS & maskFlux]/avFlux[~maskNan & maskTS & maskFlux]
     else:
         retval = np.deg2rad(foundSources['RAJ2000'][~maskNan]), \
                  np.deg2rad(foundSources['DEJ2000'][~maskNan]), fluxNuTime[~maskNan], fluxNuTimeError[~maskNan]
@@ -670,6 +668,11 @@ if __name__ == '__main__':
     print 'splinename', spline_name
     # read light curve catalog
     tbdata, timeBins = readLCCat()
+
+    if CHIBA:
+        # add average flux to catalog table
+        tbdata = getSourceAverage(tbdata)
+    
     print('Read Cataloge...Finished')
     if not os.path.exists('coszen_spl%s.npy'%spline_name) or \
         not os.path.exists('E_spline.npy%s'%spline_name) or \
