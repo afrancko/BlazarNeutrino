@@ -72,7 +72,7 @@ else:
                 'gamma': 2.1,
                 'ftypes': ['astro', 'atmo', 'prompt'],  # atmo = conv..sry for that
                 'ftype_muon': 'GaisserH3a', #???????
-                'Nsim': 5000,
+                'Nsim': 50000,
                 'Phi0': 0.91,
                 'TXS_ra': np.deg2rad(77.36061776),
                 'TXS_dec': np.deg2rad(5.69683419),
@@ -419,8 +419,12 @@ def inject_pointsource(f, tbdata, timeBins, totNorm, raS, decS, nuTime, filename
         coszenWeight = (10 ** (coszen_signal_spline(coszen)))
 
         # assign eflux as weight, weight with zen dist of neutrinos
-        weight = sourceList['eflux']*coszenWeight
-     
+        if CHIBA:
+            weight = sourceList['flux']/sourceList['avFlux']*coszenWeight
+        else:
+            weight = sourceList['eflux']*coszenWeight
+
+            
         # draw from list of monthly bins, weighted with eflux
         draw = np.random.choice(range(len(sourceList)),
                                 Nsim,
