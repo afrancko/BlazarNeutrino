@@ -1,6 +1,7 @@
 #! /usr/bin/env python
 # coding: utf-8
 
+
 # from astropy.coordinates import SkyCoord
 # from astropy import units as u
 # from plot_conf import *
@@ -658,7 +659,7 @@ if __name__ == '__main__':
         mask = np.isfinite(f_m['cr'])
         f_m = f_m[mask]
         f_m['cr'][f_m['cr']<np.deg2rad(0.25)] = np.deg2rad(0.25)
-        f_m = utils.pullCorr(f_m['cr'],f_m['NPE'])
+        f_m['cr'] = utils.pullCorr(f_m['cr'],f_m['NPE'])
         spline_name = ''
     else:
         f = readHESE(hese_path)
@@ -689,23 +690,32 @@ if __name__ == '__main__':
     
     print('Generating PDFs..Finished')
 
-    filename = './output/{}_llh_{}_{:.2f}_{}.npy'.format(addinfo, settings['Nsim'],
+    if HESE:
+        which_sample = 'HESE'
+    else:
+        which_sample = 'EHE'
+
+    filename = './output/{}/{}_llh_{}_{:.2f}_{}.npy'.format(which_sample,addinfo, settings['Nsim'],
                                               settings['gamma'],
                                               jobN)
+
+    if not os.path.exists('./output/{}/'.format(which_sample)):
+        os.makedirs('./output/{}/'.format(which_sample))
     print('##############Create BG TS Distrbution##############')
     if not os.path.exists(filename):
         llh_bg_dist= simulate(f, f_m, timeBins, tbdata,
                               totNorm, settings['Nsim'], filename=filename, E_weights=settings['E_weights'])
     else:
+        print('Load Trials...')
         llh_bg_dist = np.load(filename)
 
     # print('##############Generate Background Trials##############')
     # llh_trials = simulate(f, f_m, timeBins, tbdata,
     #                      totNorm, settings['Nsim'], E_weights=True)
 
-    #print('calculate p-values')
-    #print len(llh_bg_dist), len(llh_trials)
-    #calc_p_value(llh_bg_dist, llh_trials, name=addinfo)
+    # print('calculate p-values')
+    # print len(llh_bg_dist), len(llh_trials)
+    # calc_p_value(llh_bg_dist, llh_trials, name=addinfo)
 
     print('##############Generate Signal Trials, single source##############')
     signal_gamma = 2.1
@@ -737,6 +747,7 @@ if __name__ == '__main__':
                       tbdata,
                       timeBins,
                       totNorm,
+                      EHE_event,
                       distortion=settings['distortion'],
                       E_weights=settings['E_weights'])
 
@@ -749,7 +760,7 @@ if __name__ == '__main__':
     #print('best possible p-value')
     #exp_llh = plotLLH(filename, tbdata, timeBins, totNorm, EHE_event_best, distortion=settings['distortion'], E_weights=settings['E_weights'])
     #print('Exp P-Val {}'.format(calc_p_value(llh_bg_dist, exp_llh, save=False)))
-    print exp_llh
+    # print exp_llh
 
     #pastEvents = utils.getPastAlerts():
     #llhPastEvent = []

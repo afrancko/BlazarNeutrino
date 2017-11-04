@@ -34,8 +34,8 @@ if __name__ == '__main__':
 Resc = args["Rescue"]
 user = "tglauch"
 num_jobs = 200
-
-PROCESS_DIR = "/data/user/{}/EHE/BlazarNeutrino/dagman_files/".format(user)
+sample = 'EHE'
+PROCESS_DIR = "/data/user/{}/EHE/BlazarNeutrino/dagman_files/{}/".format(user,sample)
 WORKDIR = PROCESS_DIR + "jobs/"
 script = "/data/user/{}/EHE/BlazarNeutrino/llh.py".format(user)
 dagFile = WORKDIR + "job.dag"
