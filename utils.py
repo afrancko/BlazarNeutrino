@@ -205,6 +205,11 @@ def getPastAlerts():
     for i in fl:
         if i[0]=="#":
             continue
+        ra = float(i.split()[2])
+        dec = float(i.split()[3])
+        en =float(i.split()[5])
+        cr = pullCorr(float(i.split()[4]),en)
+        mjd = float(i.split()[4]) + 40000
         evList.append(np.array((en,ra,dec,cr,MJD),dtype=dtype))
 
     return evList

@@ -72,7 +72,7 @@ else:
                 'gamma': 2.1,
                 'ftypes': ['astro', 'atmo', 'prompt'],  # atmo = conv..sry for that
                 'ftype_muon': 'GaisserH3a', #???????
-                'Nsim': 50000,
+                'Nsim': 5000,
                 'Phi0': 0.91,
                 'TXS_ra': np.deg2rad(77.36061776),
                 'TXS_dec': np.deg2rad(5.69683419),
@@ -152,10 +152,13 @@ def getNormInBin(tbdata):
     return binNorms
 
 # get <I> for Chiba weighting
-def getSourceAverage(tbdata):
-    sumEFlux = [np.sum(s['flux'][(~np.isnan(s['flux'])) & (s['ts']>10)]) for s in tbdata]
+def getSourceAverage(tbdata, tscut=10):
+    sumEFlux = [np.sum(s['flux'][(~np.isnan(s['flux'])) & (s['ts']>tscut)]) for s in tbdata]
+    nbins =  [float(len(s['flux'][(~np.isnan(s['flux'])) & (s['ts']>tscut)])) for s in tbdata]
+    nbins = np.asarray(nbins)
     sumEFlux = np.asarray(sumEFlux)
-    sumEFlux =  sumEFlux/float(len(tbdata[0]['flux']))
+    #sumEFlux =  sumEFlux/float(len(tbdata[0]['flux']))
+    sumEFlux =  sumEFlux/nbins
     cols = [] 
     cols.append(
         fits.Column(name='avFlux', format='D', array=sumEFlux)
