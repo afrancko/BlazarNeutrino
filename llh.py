@@ -11,7 +11,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 import pyfits as fits
-from astropy.table import Column
+#from astropy.table import Column
 import sys
 from numpy.lib.recfunctions import rec_append_fields
 from scipy.interpolate import interp2d, InterpolatedUnivariateSpline, RectBivariateSpline
@@ -23,19 +23,19 @@ from scipy.optimize import minimize
 
 # ------------------------------- Settings ---------------------------- #
 
-nugen_path = 'combined.npy' #'/data/user/tglauch/EHE/processed/combined.npy'
-muon_path = 'corsika_combined.npy'#'/data/user/tglauch/EHE/processed/corsika_combined.npy'
-hese_path = '/home/annaf/BlazarNeutrino/data/nugen-hese.npy'
+nugen_path = '/data/user/tglauch/EHE/processed/combined.npy'
+muon_path = '/data/user/tglauch/EHE/processed/corsika_combined.npy'
+hese_path = 'data/nugen-hese.npy'
 #LCC_path = "/home/annaf/BlazarNeutrino/data/myCat.fits"
 #LCC_path =  #'myCat2747.fits' #"/home/annaf/BlazarNeutrino/data/myCat2747.fits"
 #LCC_path =  "sourceListAll2283_1GeV.fits" #/home/annaf/BlazarNeutrino/data/
-LCC_path = "sourceListAll2280_1GeV_fixedSpec_EFlux.fits"#"/home/annaf/BlazarNeutrino/data/sourceListAll2283_1GeV.fits"
+LCC_path = "data/sourceListAll2280_1GeV_fixedSpec_EFlux.fits"#"/home/annaf/BlazarNeutrino/data/sourceListAll2283_1GeV.fits"
 #LCC_path = "sourceListAll2280_1GeV.fits"#"/home/annaf/BlazarNeutrino/data/sourceListAll2283_1GeV.fits"
-
 
 NOWEIGHT = True
 
 HESE = False
+
 # now included in pullCorr function
 CR_corr = 1 #1./1.1774
 
@@ -68,7 +68,7 @@ else:
                 'gamma': 2.1,
                 'ftypes': ['astro', 'atmo', 'prompt'],  # atmo = conv..sry for that
                 'ftype_muon': 'GaisserH3a', #???????
-                'Nsim': 5000,
+                'Nsim': 10000,
                 'Phi0': 0.91,
                 'TXS_ra': np.deg2rad(77.36061776),
                 'TXS_dec': np.deg2rad(5.69683419),
@@ -77,7 +77,7 @@ else:
                 'distortion': False}
     
 #addinfo = 'with_E_weights_HE'
-addinfo = 'wo_E_weights_increasing_radius_fitNuis_pull'
+addinfo = 'wo_E_weights_increasing_radius_fitNuis_pull_100GeV'
 #addinfo = 'wo_E_weights_increasing_radius_noNuis'
 
 CHIBA = False
