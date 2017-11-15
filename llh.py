@@ -32,6 +32,9 @@ hese_path = '/home/annaf/BlazarNeutrino/data/nugen-hese.npy'
 LCC_path = "sourceListAll2280_1GeV_fixedSpec_EFlux.fits"#"/home/annaf/BlazarNeutrino/data/sourceListAll2283_1GeV.fits"
 #LCC_path = "sourceListAll2280_1GeV.fits"#"/home/annaf/BlazarNeutrino/data/sourceListAll2283_1GeV.fits"
 
+
+NOWEIGHT = True
+
 HESE = False
 # now included in pullCorr function
 CR_corr = 1 #1./1.1774
@@ -65,7 +68,7 @@ else:
                 'gamma': 2.1,
                 'ftypes': ['astro', 'atmo', 'prompt'],  # atmo = conv..sry for that
                 'ftype_muon': 'GaisserH3a', #???????
-                'Nsim': 500,
+                'Nsim': 5000,
                 'Phi0': 0.91,
                 'TXS_ra': np.deg2rad(77.36061776),
                 'TXS_dec': np.deg2rad(5.69683419),
@@ -82,6 +85,8 @@ CHIBA = False
 if CHIBA:
     addinfo = '%s_CHIBA'%addinfo
 
+if NOWEIGHT:
+    addinfo = '%s_NOWEIGHT'%addinfo
 
 if HESE==True:
     addinfo = '%s_HESE'%addinfo
@@ -175,11 +180,13 @@ def getSourceAverage(tbdata, tscut=10, npredcut=9):
         sumEFlux = np.sum(tbdata[s]['flux'])/float(len(tbdata[0]['flux']))
         tbdata[s]['flux100'] = tbdata[s]['flux']/sumEFlux
         tbdata[s]['flux100_err'] = tbdata[s]['flux_err']/sumEFlux
-
+        #tbdata[s]['flux100_err'][mask] = 0
+        #tbdata[s]['flux100_err'][~((~np.isnan(tbdata[s]['flux'])) & (tbdata[s]['ts']>tscut) & (tbdata[s]['flux_err']<0.5*tbdata[s]['flux']) & (tbdata[s]['npred']>npredcut))] = 0
+        
     return tbdata
 
 def getTotalNorm(tbdata):
-    if CHIBA:
+    if not CHIBA:
         sumEFlux = [np.sum(s['eflux1000_100000'][~np.isnan(s['eflux1000_100000'])]) for s in tbdata]
     else:
         sumEFlux = [np.sum(s['flux100'][~np.isnan(s['flux100'])]) for s in tbdata]
@@ -278,12 +285,12 @@ def get_sources(ra, dec, sigma, nuTime, tbdata, timeBins):
     else:
         retval = np.deg2rad(foundSources['RAJ2000'][~maskNan]), \
                  np.deg2rad(foundSources['DEJ2000'][~maskNan]), fluxNuTime[~maskNan], fluxNuTimeError[~maskNan]
-    if 0:#not len(foundSources) == 0:
+    if 0:#len(foundSources) > 1:
         print "found %i sources close by" % len(foundSources)
         print "flux weight", fluxNuTime
         print "eflux, error ", fluxNuTime, fluxNuTimeError#, binNorms[tbin] 
         print "ts ", tsNuTime
-        print foundSources['Source_Name'], foundSources['RAJ2000'], timeBins[tbin], foundSources['DEJ2000'], dist[dist<circ]
+        print foundSources['Source_Name'], foundSources['RAJ2000'], timeBins[tbin], foundSources['DEJ2000'], np.rad2deg(dist[dist<circ])
     return retval
 
 
@@ -297,11 +304,26 @@ def get_sources(ra, dec, sigma, nuTime, tbdata, timeBins):
 
 
 def negLogLike(fluxMax, fluxS, fluxError, spatialTerm, Nw):
+
+    if NOWEIGHT:
+        return -2*np.log(np.sum(spatialTerm))
+    
     nuisanceTermLog = (fluxMax-fluxS)**2 /(fluxError**2)
     sourceSum = np.dot(spatialTerm,fluxMax)
+
+    #print "spatialTerm*fluxMax", spatialTerm*fluxMax
+    #print "sum ", sourceSum
+    #print "nuisanceTermLog ", nuisanceTermLog
+    
     if (sourceSum<=1e-25):
         sourceSum=1e-25
+
+    #print "Nw ", Nw
+    #print "fluxS.sum ", fluxS.sum()
+    #print "fluxMax.sum ", fluxMax.sum()
+    #print "Nw - fluxS.sum() + fluxMax.sum()", (Nw - fluxS.sum() + fluxMax.sum())
     llh =   2.*np.log(sourceSum) - np.sum(nuisanceTermLog) - 2*np.log(Nw - fluxS.sum() + fluxMax.sum())
+    #print "llh ", llh
     return -llh
 
 
@@ -339,12 +361,6 @@ def likelihood(sim, tbdata, timeBins, Nw, distortion=False):
     coszenS = np.cos(utils.dec_to_zen(decS))
     acceptance = 10**coszen_signal_reco_spline(coszenS)
 
-    #if CHIBA:
-    #    norm = 1.0
-    #else:
-    #    norm = totNorm
-
-    #sourceTerm = 1./norm /(2*np.pi*(sigma*CR_corr*settings['sys_err_corr'])**2)*np.exp(-GreatCircleDistance(ra, dec, raS, decS)**2 / (2. * (sigma*CR_corr*settings['sys_err_corr'])**2)) * acceptance
     sigma *= CR_corr*settings['sys_err_corr']
     spatialTerm = np.exp(-GreatCircleDistance(ra, dec, raS, decS)**2 / (2.*sigma**2)) * acceptance
 
@@ -357,36 +373,38 @@ def likelihood(sim, tbdata, timeBins, Nw, distortion=False):
         highFlux = fluxS[s]+fluxError[s]
         bounds.append((lowFlux, highFlux))
 
-    res = minimize(negLogLike,x0=fluxS,
-                   args=(fluxS, fluxError,spatialTerm,Nw), method='Nelder-Mead',#'SLSQP',
-                   bounds=bounds, options={'maxiter':50,'disp':False,'ftol':1e-11})
+    if not NOWEIGHT:
+        res = minimize(negLogLike,x0=fluxS,
+                       args=(fluxS, fluxError,spatialTerm,Nw), method='Nelder-Mead',#'SLSQP',
+                       bounds=bounds, options={'maxiter':50,'disp':False,'ftol':1e-11})
     
-    fluxMax = res.x
+        fluxMax = res.x
+    else:
+        fluxMax = fluxS
   
     #fluxM = fluxS*0.5 + np.sqrt((fluxS*0.5)**2 + fluxError**2 )
     # signal likelihood
     #print 'likelihood before/after min. ', -negLogLike(fluxS, fluxS, fluxError,spatialTerm, Nw), -negLogLike(fluxMax, fluxS, fluxError,spatialTerm, Nw)
     
-    # add background likelihood
-    return -negLogLike(fluxMax, fluxS, fluxError,spatialTerm, Nw)  - 2*coszen_prob - 4*np.log(sigma)
 
+    llh = -negLogLike(fluxMax, fluxS, fluxError,spatialTerm, Nw)  - 2*coszen_prob - 4*np.log(sigma)
     
-    #print('Likelihood: {} \n'.format(2*llh))
-    #print '----------------------------'
-    #if llh<-20:#np.isnan(llh) or np.isinf(llh):
-    #    print 'ra, dec ', np.rad2deg(ra), np.rad2deg(dec)
-    #    print 'energy', en
-    #    print 'coszen ', coszen
-    #    print 'zen spline ', coszen_signal_reco_spline(coszen)
-    #    print "sourceTerm ", sourceTerm
-    #    print "nuisanceTerm ", nuisanceTerm
-    #    print "log(sourceSum) ", np.log(sourceSum)
-    #    print "E_ratio ", E_ratio
-    #    print "coszen_prob ", coszen_prob
-    #    print "sigma ", np.rad2deg(sigma), -2 * np.log(sigma)
-    #    print "flux ", fluxS, fluxError
-    #    exit()
-    #return 2 * llh
+    print('Likelihood: {} \n'.format(llh))
+    print '----------------------------'
+    if 0: #len(fluxS)>1:#np.isnan(llh) or np.isinf(llh):
+        print "************************************************"
+        print 'ra, dec ', np.rad2deg(ra), np.rad2deg(dec)
+        print 'coszen ', coszen
+        print 'zen spline ', coszen_signal_reco_spline(coszen)
+        print "spatialTerm ", spatialTerm
+        print "coszen_prob ", coszen_prob
+        print "sigma ", np.rad2deg(sigma), -4 * np.log(sigma)
+        print "flux ", fluxS, fluxError
+        print "fluxMax ", fluxMax
+        exit()
+        print "************************************************"
+        
+    return llh
 
 
 def inject_pointsource(f, tbdata, timeBins, totNorm, raS, decS, nuTime, filename='', gamma=2.1,
@@ -751,8 +769,8 @@ if __name__ == '__main__':
                                        gamma=signal_gamma, Nsim=settings['Nsim'],distortion=settings['distortion'],
                                        sourceList=None)
     print('calculate p-values signal')
-    print len(llh_bg_dist), len(signal_trials)
-    calc_p_value(llh_bg_dist, signal_trials, name='%s_signal'%addinfo)
+    #print len(llh_bg_dist), len(signal_trials)
+    #calc_p_value(llh_bg_dist, signal_trials, name='%s_signal'%addinfo)
 
 
     #print('##############Generate Signal Trials from brightness distribution##############')
@@ -778,7 +796,7 @@ if __name__ == '__main__':
                       distortion=settings['distortion'])
 
     print('Exp LLH : {}'.format(exp_llh))
-    print('Exp P-Val {}'.format(calc_p_value(llh_bg_dist, exp_llh, save=False)))
+    #print('Exp P-Val {}'.format(calc_p_value(llh_bg_dist, exp_llh, save=False)))
 
     #exp_llh = plotLLH(filename, tbdata, timeBins, totNorm, EHE_event, distortion=settings['distortion'], E_weights=settings['E_weights'])
     #print exp_llh
