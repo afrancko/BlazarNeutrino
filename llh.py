@@ -23,16 +23,19 @@ from scipy.optimize import minimize
 
 # ------------------------------- Settings ---------------------------- #
 
-nugen_path = '/data/user/tglauch/EHE/processed/combined.npy'
-muon_path = '/data/user/tglauch/EHE/processed/corsika_combined.npy'
+nugen_path = 'data/combined.npy'#'/data/user/tglauch/EHE/processed/combined.npy'
+muon_path = 'data/corsika_combined.npy'#'/data/user/tglauch/EHE/processed/corsika_combined.npy'
 hese_path = 'data/nugen-hese.npy'
 #LCC_path = "/home/annaf/BlazarNeutrino/data/myCat.fits"
 #LCC_path =  #'myCat2747.fits' #"/home/annaf/BlazarNeutrino/data/myCat2747.fits"
 #LCC_path =  "sourceListAll2283_1GeV.fits" #/home/annaf/BlazarNeutrino/data/
-LCC_path = "data/sourceListAll2280_1GeV_fixedSpec_EFlux.fits"#"/home/annaf/BlazarNeutrino/data/sourceListAll2283_1GeV.fits"
+#LCC_path = "data/sourceListAll2280_1GeV_fixedSpec_EFlux.fits"#"/home/annaf/BlazarNeutrino/data/sourceListAll2283_1GeV.fits"
+LCC_path = "data/sourceListAll2280_1GeV_fixedSpec_EFlux_MAGIC_EBL.fits"
 #LCC_path = "sourceListAll2280_1GeV.fits"#"/home/annaf/BlazarNeutrino/data/sourceListAll2283_1GeV.fits"
 
-NOWEIGHT = True
+NOWEIGHT = False
+
+MAGIC = True
 
 HESE = False
 
@@ -68,7 +71,7 @@ else:
                 'gamma': 2.1,
                 'ftypes': ['astro', 'atmo', 'prompt'],  # atmo = conv..sry for that
                 'ftype_muon': 'GaisserH3a', #???????
-                'Nsim': 10000,
+                'Nsim': 1000,
                 'Phi0': 0.91,
                 'TXS_ra': np.deg2rad(77.36061776),
                 'TXS_dec': np.deg2rad(5.69683419),
@@ -90,6 +93,9 @@ if NOWEIGHT:
 
 if HESE==True:
     addinfo = '%s_HESE'%addinfo
+
+if MAGIC==True:
+    addinfo = '%s_MAGIC_EBL'%addinfo
 
 
 dtype = [("en", np.float64),
@@ -169,6 +175,8 @@ def getSourceAverage(tbdata, tscut=10, npredcut=9):
         
     baseline = np.min(flux[(~np.isnan(flux)) & (ts>tscut) & (flux_err<0.5*flux) & (npred>npredcut)])
 
+    print len(flux[(~np.isnan(flux)) & (ts>tscut) & (flux_err<0.5*flux) & (npred>npredcut)]), len(flux)
+    
     print "baseline ", baseline
   
     for s in range(len(tbdata)):
@@ -180,8 +188,6 @@ def getSourceAverage(tbdata, tscut=10, npredcut=9):
         sumEFlux = np.sum(tbdata[s]['flux'])/float(len(tbdata[0]['flux']))
         tbdata[s]['flux100'] = tbdata[s]['flux']/sumEFlux
         tbdata[s]['flux100_err'] = tbdata[s]['flux_err']/sumEFlux
-        #tbdata[s]['flux100_err'][mask] = 0
-        #tbdata[s]['flux100_err'][~((~np.isnan(tbdata[s]['flux'])) & (tbdata[s]['ts']>tscut) & (tbdata[s]['flux_err']<0.5*tbdata[s]['flux']) & (tbdata[s]['npred']>npredcut))] = 0
         
     return tbdata
 
@@ -271,17 +277,19 @@ def get_sources(ra, dec, sigma, nuTime, tbdata, timeBins):
     tsNuTime = np.asarray([f[tbin] for f in ts])
     fluxNuTime = np.asarray([f[tbin] for f in fluxHist])
     fluxNuTimeError = np.asarray([f[tbin] for f in fluxHistErr])
-
+    detByMAGIC = np.asarray([f[tbin] for f in foundSources['MAGIC_EBL_det']]) #MAGIC_noEBL_det, this is 1 or 0 if source in bin is detectable by MAGIC or not
+    
     if (len(foundSources)) == 0:
        return None
 
     maskNan = np.isnan(fluxNuTime)
 
-    if CHIBA:
+
+    if MAGIC:
         retval = np.deg2rad(foundSources['RAJ2000'][~maskNan]), \
                  np.deg2rad(foundSources['DEJ2000'][~maskNan]),\
-                 fluxNuTime[~maskNan], \
-                 fluxNuTimeError[~maskNan]
+                 detByMAGIC[~maskNan], \
+                 detByMAGIC[~maskNan] # return dummy error
     else:
         retval = np.deg2rad(foundSources['RAJ2000'][~maskNan]), \
                  np.deg2rad(foundSources['DEJ2000'][~maskNan]), fluxNuTime[~maskNan], fluxNuTimeError[~maskNan]
@@ -308,6 +316,12 @@ def negLogLike(fluxMax, fluxS, fluxError, spatialTerm, Nw):
     if NOWEIGHT:
         return -2*np.log(np.sum(spatialTerm))
     
+    if MAGIC:
+        sourceSum = np.dot(spatialTerm,fluxS)
+        if (sourceSum<=1e-25):
+            sourceSum=1e-25
+        return -2*np.log(np.sum(sourceSum))
+
     nuisanceTermLog = (fluxMax-fluxS)**2 /(fluxError**2)
     sourceSum = np.dot(spatialTerm,fluxMax)
 
@@ -364,6 +378,9 @@ def likelihood(sim, tbdata, timeBins, Nw, distortion=False):
     sigma *= CR_corr*settings['sys_err_corr']
     spatialTerm = np.exp(-GreatCircleDistance(ra, dec, raS, decS)**2 / (2.*sigma**2)) * acceptance
 
+    #print "sigma ", sigma
+    #print "spatialTerm ", spatialTerm
+    #print "dist ", GreatCircleDistance(ra, dec, raS, decS)
     
     bounds = []
     for s in range(len(fluxS)):
@@ -373,7 +390,7 @@ def likelihood(sim, tbdata, timeBins, Nw, distortion=False):
         highFlux = fluxS[s]+fluxError[s]
         bounds.append((lowFlux, highFlux))
 
-    if not NOWEIGHT:
+    if not NOWEIGHT and not MAGIC:
         res = minimize(negLogLike,x0=fluxS,
                        args=(fluxS, fluxError,spatialTerm,Nw), method='Nelder-Mead',#'SLSQP',
                        bounds=bounds, options={'maxiter':50,'disp':False,'ftol':1e-11})
@@ -381,8 +398,12 @@ def likelihood(sim, tbdata, timeBins, Nw, distortion=False):
         fluxMax = res.x
     else:
         fluxMax = fluxS
-  
+
+    print fluxS
+        
     #fluxM = fluxS*0.5 + np.sqrt((fluxS*0.5)**2 + fluxError**2 )
+    #print fluxMax, fluxS, fluxError, Nw, coszen_prob, acceptance
+    
     # signal likelihood
     #print 'likelihood before/after min. ', -negLogLike(fluxS, fluxS, fluxError,spatialTerm, Nw), -negLogLike(fluxMax, fluxS, fluxError,spatialTerm, Nw)
     
