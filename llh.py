@@ -23,8 +23,8 @@ from scipy.optimize import minimize
 
 # ------------------------------- Settings ---------------------------- #
 
-nugen_path = 'data/combined.npy'#'/data/user/tglauch/EHE/processed/combined.npy'
-muon_path = 'data/corsika_combined.npy'#'/data/user/tglauch/EHE/processed/corsika_combined.npy'
+nugen_path = '/data/user/tglauch/EHE/processed/combined.npy'
+muon_path = '/data/user/tglauch/EHE/processed/corsika_combined.npy'
 hese_path = 'data/nugen-hese.npy'
 #LCC_path = "/home/annaf/BlazarNeutrino/data/myCat.fits"
 #LCC_path =  #'myCat2747.fits' #"/home/annaf/BlazarNeutrino/data/myCat2747.fits"
@@ -35,7 +35,7 @@ LCC_path = "data/sourceListAll2280_1GeV_fixedSpec_EFlux_MAGIC_EBL.fits"
 
 BOX = True
 
-NOWEIGHT = False
+NOWEIGHT = True
 
 MAGIC = False
 
@@ -73,7 +73,7 @@ else:
                 'gamma': 2.1,
                 'ftypes': ['astro', 'atmo', 'prompt'],  # atmo = conv..sry for that
                 'ftype_muon': 'GaisserH3a', #???????
-                'Nsim': 1000,
+                'Nsim': 5000,
                 'Phi0': 0.91,
                 'TXS_ra': np.deg2rad(77.36061776),
                 'TXS_dec': np.deg2rad(5.69683419),
@@ -322,9 +322,6 @@ def get_sources(ra, dec, sigma, nuTime, tbdata, timeBins):
 
 def negLogLike(fluxMax, fluxS, fluxError, spatialTerm, Nw):
 
-    if BOX:
-        spatialTerm[spatialTerm>0] = 1
-    
     if NOWEIGHT:
         return -2*np.log(np.sum(spatialTerm))
     
@@ -390,6 +387,13 @@ def likelihood(sim, tbdata, timeBins, Nw, distortion=False):
     sigma *= CR_corr*settings['sys_err_corr']
     spatialTerm = np.exp(-GreatCircleDistance(ra, dec, raS, decS)**2 / (2.*sigma**2)) * acceptance
 
+    if BOX:
+       dist = GreatCircleDistance(ra, dec, raS, decS)
+       spatialTerm[dist<=np.deg2rad(0.5)] = 1
+       spatialTerm[dist>np.deg2rad(0.5)] = 0
+
+
+
     #print "sigma ", sigma
     #print "spatialTerm ", spatialTerm
     #print "dist ", GreatCircleDistance(ra, dec, raS, decS)
@@ -419,8 +423,10 @@ def likelihood(sim, tbdata, timeBins, Nw, distortion=False):
     # signal likelihood
     #print 'likelihood before/after min. ', -negLogLike(fluxS, fluxS, fluxError,spatialTerm, Nw), -negLogLike(fluxMax, fluxS, fluxError,spatialTerm, Nw)
     
-
-    llh = -negLogLike(fluxMax, fluxS, fluxError,spatialTerm, Nw)  - 2*coszen_prob - 4*np.log(sigma)
+    if BOX:
+       llh = -negLogLike(fluxMax, fluxS, fluxError,spatialTerm, Nw)  - 2*coszen_prob
+    else:
+       llh = -negLogLike(fluxMax, fluxS, fluxError,spatialTerm, Nw)  - 2*coszen_prob - 4*np.log(sigma)
     
     print('Likelihood: {} \n'.format(llh))
     print '----------------------------'
