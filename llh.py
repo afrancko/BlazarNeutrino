@@ -33,9 +33,11 @@ hese_path = 'data/nugen-hese.npy'
 LCC_path = "data/sourceListAll2280_1GeV_fixedSpec_EFlux_MAGIC_EBL.fits"
 #LCC_path = "sourceListAll2280_1GeV.fits"#"/home/annaf/BlazarNeutrino/data/sourceListAll2283_1GeV.fits"
 
+BOX = True
+
 NOWEIGHT = False
 
-MAGIC = True
+MAGIC = False
 
 HESE = False
 
@@ -97,6 +99,8 @@ if HESE==True:
 if MAGIC==True:
     addinfo = '%s_MAGIC_EBL'%addinfo
 
+if BOX==True:
+    addinfo = '%s_BOX'%addinfo
 
 dtype = [("en", np.float64),
          ("ra", np.float64),
@@ -243,10 +247,15 @@ def getTBin(testT, timeBins):
 # get extragal. sources and flux
 # ra, dec in rad, nuTime in Fermi MET
 def get_sources(ra, dec, sigma, nuTime, tbdata, timeBins):
-    # for testing set to 3
-    circ = sigma * 3.#5
-    if circ > np.deg2rad(10):
-        circ = np.deg2rad(10)
+ 
+    if BOX:
+        circ = np.deg2rad(0.5)
+
+    else:
+        # for testing set to 3
+        circ = sigma * 3.#5
+        if circ > np.deg2rad(10):
+            circ = np.deg2rad(10)
 
     dist = GreatCircleDistance(np.deg2rad(tbdata['RAJ2000']),
                                np.deg2rad(tbdata['DEJ2000']),
@@ -313,6 +322,9 @@ def get_sources(ra, dec, sigma, nuTime, tbdata, timeBins):
 
 def negLogLike(fluxMax, fluxS, fluxError, spatialTerm, Nw):
 
+    if BOX:
+        spatialTerm[spatialTerm>0] = 1
+    
     if NOWEIGHT:
         return -2*np.log(np.sum(spatialTerm))
     
@@ -329,8 +341,8 @@ def negLogLike(fluxMax, fluxS, fluxError, spatialTerm, Nw):
     #print "sum ", sourceSum
     #print "nuisanceTermLog ", nuisanceTermLog
     
-    if (sourceSum<=1e-25):
-        sourceSum=1e-25
+    #if (sourceSum<=1e-25):
+    #    sourceSum=1e-25
 
     #print "Nw ", Nw
     #print "fluxS.sum ", fluxS.sum()
