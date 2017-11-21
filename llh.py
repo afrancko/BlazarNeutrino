@@ -23,8 +23,10 @@ from scipy.optimize import minimize
 
 # ------------------------------- Settings ---------------------------- #
 
-nugen_path = '/data/user/tglauch/EHE/processed/combined.npy'
-muon_path = '/data/user/tglauch/EHE/processed/corsika_combined.npy'
+nugen_path = 'data/combined.npy'
+#nugen_path = '/data/user/tglauch/EHE/processed/combined.npy
+muon_path = 'data/corsika_combined.npy'
+#muon_path = '/data/user/tglauch/EHE/processed/corsika_combined.npy'
 hese_path = 'data/nugen-hese.npy'
 #LCC_path = "/home/annaf/BlazarNeutrino/data/myCat.fits"
 #LCC_path =  #'myCat2747.fits' #"/home/annaf/BlazarNeutrino/data/myCat2747.fits"
@@ -35,11 +37,14 @@ LCC_path = "data/sourceListAll2280_1GeV_fixedSpec_EFlux_MAGIC_EBL.fits"
 
 BOX = True
 
-NOWEIGHT = True
+NOWEIGHT = False
 
 MAGIC = False
 
 HESE = False
+
+CHIBA = True
+
 
 # now included in pullCorr function
 CR_corr = 1 #1./1.1774
@@ -73,7 +78,7 @@ else:
                 'gamma': 2.1,
                 'ftypes': ['astro', 'atmo', 'prompt'],  # atmo = conv..sry for that
                 'ftype_muon': 'GaisserH3a', #???????
-                'Nsim': 5000,
+                'Nsim': 10,
                 'Phi0': 0.91,
                 'TXS_ra': np.deg2rad(77.36061776),
                 'TXS_dec': np.deg2rad(5.69683419),
@@ -85,21 +90,19 @@ else:
 addinfo = 'wo_E_weights_increasing_radius_fitNuis_pull_100GeV'
 #addinfo = 'wo_E_weights_increasing_radius_noNuis'
 
-CHIBA = False
-
 if CHIBA:
     addinfo = '%s_CHIBA'%addinfo
 
 if NOWEIGHT:
     addinfo = '%s_NOWEIGHT'%addinfo
 
-if HESE==True:
+if HESE:
     addinfo = '%s_HESE'%addinfo
 
-if MAGIC==True:
+if MAGIC:
     addinfo = '%s_MAGIC_EBL'%addinfo
 
-if BOX==True:
+if BOX:
     addinfo = '%s_BOX'%addinfo
 
 dtype = [("en", np.float64),
@@ -334,19 +337,22 @@ def negLogLike(fluxMax, fluxS, fluxError, spatialTerm, Nw):
     nuisanceTermLog = (fluxMax-fluxS)**2 /(fluxError**2)
     sourceSum = np.dot(spatialTerm,fluxMax)
 
-    #print "spatialTerm*fluxMax", spatialTerm*fluxMax
-    #print "sum ", sourceSum
-    #print "nuisanceTermLog ", nuisanceTermLog
+    print "spatialTerm ", spatialTerm
+    print "spatialTerm*fluxMax", spatialTerm*fluxMax
+    print "sum ", sourceSum
+    print "nuisanceTermLog ", nuisanceTermLog
     
     #if (sourceSum<=1e-25):
     #    sourceSum=1e-25
 
-    #print "Nw ", Nw
-    #print "fluxS.sum ", fluxS.sum()
-    #print "fluxMax.sum ", fluxMax.sum()
-    #print "Nw - fluxS.sum() + fluxMax.sum()", (Nw - fluxS.sum() + fluxMax.sum())
+    print "Nw ", Nw
+    print "fluxS.sum ", fluxS.sum()
+    print "fluxMax.sum ", fluxMax.sum()
+    print "Nw - fluxS.sum() + fluxMax.sum()", (Nw - fluxS.sum() + fluxMax.sum())
+    print " 2.*np.log(sourceSum) ",  2.*np.log(sourceSum)
+    print "np.sum(nuisanceTermLog) ", np.sum(nuisanceTermLog)
     llh =   2.*np.log(sourceSum) - np.sum(nuisanceTermLog) - 2*np.log(Nw - fluxS.sum() + fluxMax.sum())
-    #print "llh ", llh
+    print "llh ", llh
     return -llh
 
 
@@ -389,8 +395,8 @@ def likelihood(sim, tbdata, timeBins, Nw, distortion=False):
 
     if BOX:
        dist = GreatCircleDistance(ra, dec, raS, decS)
-       spatialTerm[dist<=np.deg2rad(0.5)] = 1
-       spatialTerm[dist>np.deg2rad(0.5)] = 0
+       spatialTerm[dist<=np.deg2rad(0.5)] = 1./(np.pi*(np.deg2rad(0.5))**2) * acceptance
+       spatialTerm[dist>np.deg2rad(0.5)] = 1e-25
 
 
 
@@ -415,7 +421,7 @@ def likelihood(sim, tbdata, timeBins, Nw, distortion=False):
     else:
         fluxMax = fluxS
 
-    print fluxS
+    print fluxS, fluxMax
         
     #fluxM = fluxS*0.5 + np.sqrt((fluxS*0.5)**2 + fluxError**2 )
     #print fluxMax, fluxS, fluxError, Nw, coszen_prob, acceptance
