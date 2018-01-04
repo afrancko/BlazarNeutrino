@@ -8,7 +8,8 @@ from astropy.io import fits
 
 tscut = 10
 
-LCC_path = "sourceListAll2280_1GeV_fixedSpec_EFlux.fits"
+#LCC_path = "sourceListAll2280_1GeV_fixedSpec_EFlux.fits"
+LCC_path = "sourceListAll2280_1GeV_fixedSpec_EFlux_VHE.fits"
 
 hdulist = pyfits.open(LCC_path)
 tbdataLong = hdulist[1].data
@@ -41,6 +42,9 @@ fluxArray = []
 fluxArray100 = []
 fluxArray10 = []
 
+fluxArrayHE = []
+efluxArrayHE = []
+
 fluxArrayAverage = []
 photonFluxArray = []
 photonFluxErrorArray = []
@@ -58,6 +62,10 @@ for i in range(len(tbdata)):
     fluxHist = tbdata[i]['eflux']
     fluxHist10 =  tbdata[i]['eflux1000_10000']
     fluxHist100 = tbdata[i]['eflux1000_100000']
+
+    #fluxHistHE = tbdata[i]['eflux_vhe_EBL_100000_1000000']
+    efluxHistHE = tbdata[i]['eflux_vhe_100000_1000000']
+    fluxHistHE = tbdata[i]['flux_vhe_100000_1000000']
 
     photonFluxHist = tbdata[i]['flux']
     photonFluxErrorHist = tbdata[i]['flux_err']    
@@ -87,8 +95,14 @@ for i in range(len(tbdata)):
         fluxRatio.append(fluxR[fi])
         npredArray.append(npred[fi])
         nameArray.append(nname)
+	fluxArrayHE.append(fluxHistHE)
+        efluxArrayHE.append(efluxHistHE)
         
+
 print bSource, maxEFlux
+
+fluxArrayHE = np.asarray(fluxArrayHE)
+efluxArrayHE = np.asarray(efluxArrayHE)
 
 fluxErrorArray = np.asarray(fluxErrorArray)
 fluxArray = np.asarray(fluxArray)
@@ -117,6 +131,16 @@ mask = np.isnan(fluxRatio)
 fluxRatio = fluxRatio[~mask]
 mask = np.isfinite(fluxRatio)
 fluxRatio = fluxRatio[mask]
+
+
+plt.figure()
+bins = np.linspace(-10,-4,100)
+n, b, a = plt.hist(np.log10(fluxArrayHE), bins=bins, log=True, label='flux 0.1-1TeV')
+n, b, a = plt.hist(np.log10(efluxArrayHE), bins=bins, log=True, label='eflux 0.1-1TeV')
+plt.legend()
+plt.xlabel('monthly flux $>$100GeV [ph/cm$^2$/s]')
+plt.savefig("plots/FluxDistHE.png",bbox_inches='tight')
+
 
 
 plt.figure()
@@ -157,7 +181,10 @@ TXSFluxErr = sTXS['eflux_err'][-1] #2.89975827e-05
 print "TXS EFlux ", TXSFlux, TXSFluxErr
 
 TXSPhotonFlux = sTXS['eflux'][-1]
-#1/0
+
+TXSFlux_HE = sTXS['flux_vhe_100000_1000000'][-1] #0.00012919
+TXSEFlux_HE = sTXS['eflux_vhe_100000_1000000'][-1] #0.00012919
+
 
 #plt.figure()
 #bins = np.linspace(0,100,100)
@@ -247,6 +274,20 @@ plt.savefig("plots/EFluxDistCum.png",bbox_inches='tight')
 print 'larger than eflux 1TeV ', len(X2[X2>np.log10(TXSFlux)])/float(len(X2))
 print 'larger than eflux 100 GeV ', len(X2100[X2100>np.log10(TXSFlux100)])/float(len(X2100))
 print 'larger than eflux 10 GeV', len(X210[X210>np.log10(TXSFlux10)])/float(len(X210))
+
+
+plt.figure()
+X2 = np.sort(np.log10(fluxArray_HE))
+F2 = np.ones(len(np.log10(fluxArray_HE))) - np.array(range(len(np.log10(fluxArray_HE)))) / float(len(np.log10(fluxArray_HE)))
+plt.plot(X2, F2, lw=3, label='flux 0.1-1TeV', color='blue')
+plt.plot([np.log10(TXSFlux_HE),np.log10(TXSFlux_HE)],[0.5e-5,1],color='red',lw=2, label='TXS', ls=':')
+
+plt.figure()
+X2 = np.sort(np.log10(efluxArray_HE))
+F2 = np.ones(len(np.log10(efluxArray_HE))) - np.array(range(len(np.log10(efluxArray_HE)))) / float(len(np.log10(efluxArray_HE)))
+plt.plot(X2, F2, lw=3, label='eflux 0.1-1TeV', color='blue')
+plt.plot([np.log10(TXSEFlux_HE),np.log10(TXSEFlux_HE)],[0.5e-5,1],color='red',lw=2, label='TXS', ls=':')
+
 
 
 plt.figure()
